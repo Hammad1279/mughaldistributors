@@ -1,5 +1,6 @@
-import React, { useMemo, useEffect, useRef } from 'react';
-import { Card, Icon, Button, Input } from './ui';
+
+import React, { useMemo, useEffect, useRef, useState } from 'react';
+import { Card, Icon, Button, Input, Modal } from './ui';
 import { useAppContext } from '../App';
 import { Medicine, MedicalStore, FinalizedBill, Supplier, FinalizedPurchase } from '../types';
 import { ToggleSwitch } from './ui';
@@ -131,9 +132,11 @@ const SalesChart = () => {
 export default function Settings() {
     const { 
         addNotification, medicines, finalizedBills, medicalStores,
-        setActiveView, importData, clearAllData, billLayoutSettings, updateBillLayoutSettings,
-        exportData
+        setActiveView, clearAllData, billLayoutSettings, updateBillLayoutSettings,
+        downloadBackup, initiateImport
     } = useAppContext();
+    
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const highlights = useMemo(() => {
         if (!finalizedBills || finalizedBills.length === 0) {
@@ -142,10 +145,12 @@ export default function Settings() {
 
         const productQuantities = new Map<string, number>();
         finalizedBills.forEach(bill => {
-            bill.items.forEach(item => {
-                const currentQty = productQuantities.get(item.id) || 0;
-                productQuantities.set(item.id, currentQty + item.quantity);
-            });
+            if (Array.isArray(bill.items)) {
+                bill.items.forEach(item => {
+                    const currentQty = productQuantities.get(item.id) || 0;
+                    productQuantities.set(item.id, currentQty + item.quantity);
+                });
+            }
         });
 
         let topProductId: string | null = null;
@@ -170,62 +175,14 @@ export default function Settings() {
         let maxRevenue = 0;
         for (const store of storeRevenues.values()) {
             if (store.total > maxRevenue) {
+                // FIX: The original code had a type error (maxRevenue = store) and a logic bug (topStore was not assigned).
                 maxRevenue = store.total;
                 topStore = store;
             }
         }
 
         return { topProduct, topStore };
-    }, [finalizedBills, medicines, medicalStores]);
-
-    const handleExport = () => {
-        try {
-            const dataToExport = exportData();
-            const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = `mughal_os_backup_${new Date().toISOString().slice(0, 10)}.json`;
-            a.click();
-            URL.revokeObjectURL(a.href);
-            addNotification("Data exported successfully!", "success");
-        } catch(e) {
-             addNotification("Error exporting data.", "error");
-             console.error(e);
-        }
-    };
-    
-    const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-            try {
-                const text = e.target?.result;
-                if (typeof text !== 'string') throw new Error("File is not readable");
-                const data = JSON.parse(text);
-
-                if (window.confirm("This will OVERWRITE your personal data (prices, bills, stores) and MERGE the shared medicine list. This cannot be undone. Are you sure you want to proceed?")) {
-                    addNotification("Importing data... Please wait.", "info");
-                    
-                    importData(data);
-                                        
-                    addNotification("Data imported successfully! The app will now reload.", "success");
-                    setTimeout(() => window.location.reload(), 1500);
-                }
-            } catch (err) {
-                console.error("Import failed", err);
-                addNotification("Import failed. The file may be invalid.", "error");
-            } finally {
-                event.target.value = '';
-            }
-        };
-        reader.readAsText(file);
-    };
-
-    const triggerImport = () => {
-        document.getElementById('import-file-input')?.click();
-    };
+    }, [finalizedBills, medicines]);
 
     const handleClearData = () => {
         if(window.confirm("DANGER: This will delete ALL data for your user account (bills, stores, suppliers, and your personal medicine prices/discounts). The shared medicine inventory for ALL users will NOT be affected. This cannot be undone.")){
@@ -235,10 +192,19 @@ export default function Settings() {
             }
         }
     }
-
+    
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files?.[0]) {
+            initiateImport(e.target.files[0]);
+        }
+        e.target.value = ''; // Reset input so the same file can be selected again
+    };
 
     return (
-        <div className="p-4 md:p-6 animate-fade-in space-y-8">
+        <div 
+            className="p-4 md:p-6 animate-fade-in space-y-8 relative"
+        >
+            <input type="file" ref={fileInputRef} accept=".json" style={{ display: 'none' }} onChange={handleFileSelect} />
             <div>
                 <h1 className="text-3xl md:text-4xl font-bold text-white">Overview & Settings</h1>
                 <p className="text-slate-400 mt-1">Review your business performance and manage application data.</p>
@@ -294,34 +260,35 @@ export default function Settings() {
                     <Card className="p-6">
                         <h2 className="text-xl font-semibold mb-4 text-violet-300">Bill Layout Customization</h2>
                         <p className="text-slate-400 mb-6">Control which elements are visible on your printed and downloaded bills.</p>
-                        <div className="space-y-6">
-                            <ToggleSwitch
-                                label="Show Phone Number on Bill"
-                                checked={billLayoutSettings.showPhoneNumber}
-                                onChange={(checked) => updateBillLayoutSettings({ showPhoneNumber: checked })}
-                            />
-                            <ToggleSwitch
-                                label="Show Bill Date on Bill"
-                                checked={billLayoutSettings.showBillDate}
-                                onChange={(checked) => updateBillLayoutSettings({ showBillDate: checked })}
-                            />
+                        <div className="space-y-4">
+                            <Input label="Distributor Name" value={billLayoutSettings.distributorName} onChange={e => updateBillLayoutSettings({ distributorName: e.target.value })} />
+                            <Input label="Distributor Title" value={billLayoutSettings.distributorTitle} onChange={e => updateBillLayoutSettings({ distributorTitle: e.target.value })} />
+                            <Input label="Address Line 1" value={billLayoutSettings.distributorAddressLine1} onChange={e => updateBillLayoutSettings({ distributorAddressLine1: e.target.value })} />
+                            <Input label="Address Line 2" value={billLayoutSettings.distributorAddressLine2} onChange={e => updateBillLayoutSettings({ distributorAddressLine2: e.target.value })} />
+                            <Input label="Phone Number" value={billLayoutSettings.phoneNumber} onChange={e => updateBillLayoutSettings({ phoneNumber: e.target.value })} />
+                            <Input label="Footer Text (Optional)" value={billLayoutSettings.footerText || ''} onChange={e => updateBillLayoutSettings({ footerText: e.target.value })} />
+                            <div className='pt-4 mt-4 border-t border-slate-700 space-y-4'>
+                                <ToggleSwitch
+                                    label="Show Phone Number on Bill"
+                                    checked={billLayoutSettings.showPhoneNumber}
+                                    onChange={(checked) => updateBillLayoutSettings({ showPhoneNumber: checked })}
+                                />
+                                <ToggleSwitch
+                                    label="Show Bill Date on Bill"
+                                    checked={billLayoutSettings.showBillDate}
+                                    onChange={(checked) => updateBillLayoutSettings({ showBillDate: checked })}
+                                />
+                            </div>
                         </div>
                     </Card>
 
                     <Card className="p-6">
                         <h2 className="text-xl font-semibold mb-4 text-violet-300">Data Management</h2>
-                        <p className="text-slate-400 mb-6">Export all your data to a JSON file for backup, or import data from a backup file. Be careful, importing will overwrite existing data.</p>
+                        <p className="text-slate-400 mb-6">Use these tools to backup your data to a local file or restore it from a backup.</p>
                         <div className="flex flex-col sm:flex-row gap-4">
-                            <Button onClick={handleExport} variant="success" className="w-full" icon="download">Export All Data</Button>
-                            <Button onClick={triggerImport} variant="secondary" className="w-full" icon="upload">Import Data</Button>
-                            <input type="file" id="import-file-input" className="hidden" accept=".json" onChange={handleImport} />
+                            <Button onClick={() => fileInputRef.current?.click()} variant="secondary" className="w-full" icon="upload">Import Data</Button>
+                            <Button onClick={downloadBackup} variant="success" className="w-full" icon="download">Export Data</Button>
                         </div>
-                    </Card>
-
-                    <Card className="p-6 border-red-500/50">
-                        <h2 className="text-xl font-semibold mb-4 text-red-400">Danger Zone</h2>
-                        <p className="text-slate-400 mb-6">Clearing all data is an irreversible action. It will reset your account to its initial state. The shared inventory of medicine names for all users will NOT be affected. Please export your data first if you want to keep a backup.</p>
-                         <Button onClick={handleClearData} variant="danger" className="w-full" icon="warning">Clear My Data</Button>
                     </Card>
                 </div>
             </div>

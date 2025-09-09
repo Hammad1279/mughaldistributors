@@ -118,7 +118,7 @@ export default function CreateBill() {
             return { calculatedDiscountAmount: 0, netAmount: 0 };
         }
         const grossAmount = data.quantity * data.rate;
-        const discountPercentage = data.discountValue ?? med.saleDiscount ?? 0;
+        const discountPercentage = data.discountValue ?? med.discount ?? 0;
         const calculatedDiscountAmount = grossAmount * (discountPercentage / 100);
         const taxAmount = data.salesTaxAmount || 0;
         const netAmount = grossAmount - calculatedDiscountAmount + taxAmount;
@@ -132,7 +132,7 @@ export default function CreateBill() {
             return {
                 ...med,
                 quantity: data?.quantity || 0,
-                discountValue: data?.discountValue ?? med.saleDiscount,
+                discountValue: data?.discountValue ?? med.discount,
                 purchaseDiscount: med.discount,
                 mrp: data?.rate ?? med.price ?? 0,
                 calculatedDiscountAmount,
@@ -162,7 +162,7 @@ export default function CreateBill() {
                 newData[med.id] = currentData[med.id] || {
                     quantity: (med as CartItem).quantity || 1,
                     rate: (med as CartItem).mrp || med.price || 0,
-                    discountValue: (med as CartItem).discountValue ?? med.saleDiscount,
+                    discountValue: (med as CartItem).discountValue ?? med.discount,
                     batchNo: med.batchNo,
                     salesTaxAmount: (med as CartItem).salesTaxAmount ?? null,
                 };
@@ -240,12 +240,15 @@ export default function CreateBill() {
                  searchResults.push({ id: 'add_new', name: term.trim() });
             }
            
-            const rect = e.target.getBoundingClientRect();
+            const inputRect = e.target.getBoundingClientRect();
+            const mainContent = (e.target as HTMLElement).closest('.animate-main-in');
+            const mainRect = mainContent ? mainContent.getBoundingClientRect() : { top: 0, left: 0 };
+    
             setActiveSearch({
                 term,
                 results: searchResults,
-                top: rect.bottom + 4,
-                left: rect.left
+                top: inputRect.bottom + 4 - mainRect.top,
+                left: inputRect.left - mainRect.left
             });
             setActiveSearchIndex(0);
         } else {
@@ -262,7 +265,7 @@ export default function CreateBill() {
                 const newCartItem: CartItem = {
                     ...med,
                     quantity: 1,
-                    discountValue: med.saleDiscount,
+                    discountValue: med.discount,
                     purchaseDiscount: med.discount,
                     mrp: med.price || 0,
                     calculatedDiscountAmount: 0,
@@ -314,21 +317,28 @@ export default function CreateBill() {
     };
 
     const handleDataChange = (medId: string, field: keyof BillItemData, value: string | number) => {
-        // If quantity is set to 0 or an empty string, remove the item from the bill
+        // This refactored logic ensures that an item is removed from the cart if its quantity becomes zero.
+        // It updates the item's data first, then triggers removal, making state updates more predictable and
+        // preventing race conditions where other data (like Rate) could prevent the removal.
+
+        // Step 1: Always update the item's specific data.
+        setItemData(prev => {
+            const currentData = prev[medId] || {
+                quantity: 1, rate: 0, discountValue: null, batchNo: '', salesTaxAmount: null
+            };
+            const updatedData = { ...currentData, [field]: value };
+            return { ...prev, [medId]: updatedData as BillItemData };
+        });
+
+        // Step 2: If the quantity was set to zero or less, remove the item from the cart.
         if (field === 'quantity' && Number(value) <= 0) {
-            const itemToRemove = cart.find(item => item.id === medId);
-            setCart(prevCart => prevCart.filter(item => item.id !== medId));
-            if (itemToRemove) {
-                addNotification(`"${itemToRemove.name}" removed from bill.`, 'info');
-            }
-        } else {
-            setItemData(prev => ({
-                ...prev,
-                [medId]: {
-                    ...prev[medId],
-                    [field]: value
+            setCart(prevCart => {
+                const itemToRemove = prevCart.find(item => item.id === medId);
+                if (itemToRemove) {
+                    addNotification(`"${itemToRemove.name}" removed from bill.`, 'info');
                 }
-            }));
+                return prevCart.filter(item => item.id !== medId);
+            });
         }
     };
 
@@ -590,7 +600,7 @@ export default function CreateBill() {
                         )}
                     </div>
 
-                    <div className="flex-grow"></div>
+                    <div className="flex-grow hidden md:block"></div>
                     <button className="classic-toolbar-button" onClick={() => handleFinalizeBill()} disabled={!isBillingActive || cart.length === 0}>Save</button>
                     <button className="classic-toolbar-button !bg-emerald-600 hover:!bg-emerald-500 text-white" onClick={() => handleFinalizeBill(true)} disabled={!isBillingActive || cart.length === 0}>Save & Print</button>
                     {isCancelling ? (
@@ -604,7 +614,7 @@ export default function CreateBill() {
                 
                 <div ref={gridContainerRef} className="classic-grid-container custom-scrollbar">
                     { isBillingActive ? (
-                        <table className="classic-grid">
+                        <table className="classic-grid responsive-table">
                             <thead>
                                 <tr>
                                     <th style={{ width: '45%' }}>Product</th>
@@ -653,7 +663,7 @@ export default function CreateBill() {
                                             med={med}
                                             data={data}
                                             netAmount={totals.netAmount}
-                                            discountDisplayValue={data?.discountValue ?? med.saleDiscount ?? ''}
+                                            discountDisplayValue={data?.discountValue ?? med.discount ?? ''}
                                             onDataChange={handleDataChange}
                                             onKeyDown={handleInputKeyDown}
                                             onFocus={(e) => e.target.select()}

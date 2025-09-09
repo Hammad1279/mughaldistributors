@@ -1,8 +1,24 @@
-
 import { FinalizedBill, CartItem, BillLayoutSettings } from '../types';
 
 export const BillTemplate = (bill: FinalizedBill, settings: BillLayoutSettings): string => {
-    const getFormattedDate = (dateStr: string) => {
+    
+    // --- Helper Functions ---
+    const escapeHTML = (str: any): string => {
+        const strVal = String(str ?? '');
+        if (!strVal) return '';
+        return strVal.replace(
+            /[&<>'"]/g,
+            tag => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                "'": '&#39;',
+                '"': '&quot;',
+            }[tag] || tag)
+        );
+    };
+    
+    const getFormattedDate = (dateStr: string): string => {
         return new Date(dateStr).toLocaleDateString('en-GB', {
             day: 'numeric',
             month: 'long',
@@ -10,122 +26,155 @@ export const BillTemplate = (bill: FinalizedBill, settings: BillLayoutSettings):
         });
     };
 
-    const grossAmount = bill.items.reduce((acc, item) => acc + (item.mrp * item.quantity), 0);
+    // --- Data Processing ---
+    const items = Array.isArray(bill.items) ? bill.items : [];
+    const grossAmount = items.reduce((acc, item) => acc + (item.mrp * item.quantity), 0);
+    const shouldShowTaxColumn = items.some(item => item.salesTaxAmount && item.salesTaxAmount > 0);
+    const shouldShowBatchNoColumn = items.some(item => item.batchNo && item.batchNo.trim() !== '');
 
-    // Determine which optional columns to show based on the data in this specific bill
-    const shouldShowTaxColumn = bill.items.some(item => item.salesTaxAmount && item.salesTaxAmount > 0);
-    const shouldShowBatchNoColumn = bill.items.some(item => item.batchNo && item.batchNo.trim() !== '');
-
-    let itemsHTML = '';
-    bill.items.forEach((item: CartItem) => {
+    // --- HTML Generation for Items ---
+    const itemsHTML = items.map((item: CartItem) => {
         const itemGross = item.mrp * item.quantity;
-        itemsHTML += `
+        return `
             <tr>
                 <td class="text-center">${item.quantity}</td>
-                <td>${item.name}</td>
+                <td class="text-left">${escapeHTML(item.name)}</td>
                 <td class="text-center">${item.mrp.toFixed(2)}</td>
                 <td class="text-center">${itemGross.toFixed(2)}</td>
                 <td class="text-center">${item.discountValue ?? 0}%</td>
                 ${shouldShowTaxColumn ? `<td class="text-center">${(item.salesTaxAmount || 0).toFixed(2)}</td>` : ''}
-                ${shouldShowBatchNoColumn ? `<td class="text-center">${item.batchNo || '---'}</td>` : ''}
+                ${shouldShowBatchNoColumn ? `<td class="text-center">${escapeHTML(item.batchNo) || '---'}</td>` : ''}
                 <td class="text-center">${item.netAmount.toFixed(2)}</td>
             </tr>
         `;
-    });
+    }).join('');
+    
+    const footerHTML = settings.footerText ? `
+        <div class="footer">
+            <p>${escapeHTML(settings.footerText)}</p>
+        </div>
+    ` : '';
 
+
+    // --- Final HTML String ---
     return `
-    <html>
+    <!DOCTYPE html>
+    <html lang="en">
     <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Bill</title>
         <style>
-            @import url('https://fonts.googleapis.com/css2?family=Garamond:wght@700&family=Inter:wght@400;700&display=swap');
+            @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Lato:wght@400;700&family=Roboto+Slab:wght@700&family=Roboto:wght@400;700&display=swap');
             @page {
                 size: A4;
                 margin: 0;
             }
             body {
-                font-family: 'Inter', sans-serif;
+                font-family: 'Roboto', sans-serif;
                 font-size: 10pt;
-                color: #2b2b2b;
+                color: #000000;
                 margin: 0;
                 padding: 0;
-                background-color: #e0e0e0;
+                background-color: #ffffff;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
             }
             .invoice-box {
-                background: #f8f6f2; /* Creamy off-white background */
-                width: 210mm;
-                min-height: 297mm; /* Ensure it's at least A4 height, but can grow */
-                padding: 12mm;
-                margin: 10mm auto;
+                background: #ffffff;
+                width: 100%;
+                min-height: 297mm;
+                padding: 10mm;
+                margin: 0;
                 box-sizing: border-box;
-                box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+                box-shadow: none;
+                display: flex;
+                flex-direction: column;
+            }
+            .content-wrap {
+                flex: 1;
             }
             table {
                 width: 100%;
                 border-collapse: collapse;
-                line-height: 1.5;
+                line-height: 1.3;
             }
             p {
-                margin: 0 0 4px 0;
+                margin: 0 0 2px 0;
             }
             .main-title {
-                font-family: 'Garamond', serif;
-                font-size: 28pt;
-                font-weight: bold;
-                letter-spacing: 4px;
+                font-family: 'Cinzel', serif;
+                font-size: 26pt;
+                font-weight: 700;
+                letter-spacing: 4px; 
                 text-align: center;
-                padding-bottom: 8px;
+                padding-bottom: 15px; 
+                color: #000000;
+                border-bottom: 2px solid #000000;
+                margin-bottom: 15px;
+                text-transform: uppercase; 
+                text-shadow: none;
             }
             .bill-info-table {
-                margin-top: 25px;
+                margin-top: 10px;
+                font-family: 'Lato', sans-serif;
+                font-size: 10.5pt;
+                line-height: 1.2;
             }
             .bill-info-table td {
-                padding-top: 2px;
-                padding-bottom: 2px;
+                padding-top: 1px;
+                padding-bottom: 1px;
                 vertical-align: top;
             }
-            .bill-info-table b {
+            .bill-info-table b, .totals-box b {
+                font-weight: 700;
+            }
+            .distributor-info {
+                font-family: 'Roboto Slab', serif;
                 font-weight: 700;
             }
             .items-table {
                 margin-top: 20px;
                 width: 100%;
-                table-layout: auto; /* Allow table to dynamically size columns */
+                border: 1px solid #000000;
             }
             .items-table thead th {
-                background-color: #D9E2D6 !important;
-                color: #000;
+                background-color: #ffffff !important;
                 font-weight: 700;
-                padding: 8px;
-                border-left: 1px solid #333;
-                border-right: 1px solid #333;
+                padding: 5px 8px;
+                border-bottom: 1px solid #000000;
+                border-right: 1px solid #000000;
             }
-            .items-table thead th:first-child { border-left: none; }
-            .items-table thead th:last-child { border-right: none; }
+            .items-table thead th:last-child {
+                border-right: none;
+            }
             .items-table tbody td {
-                padding: 8px;
-                background-color: #FFFFFF !important;
-                border-bottom: 1px solid #eee; /* Add subtle separator */
+                padding: 3px 8px;
+                border-right: 1px solid #000000;
+                font-size: 9.5pt;
             }
-            .items-table tbody tr:last-child td {
-                border-bottom: none;
+            .items-table tbody td:last-child {
+                border-right: none;
             }
-            .totals-section {
-                margin-top: 20px;
-                display: flex;
-                justify-content: flex-end;
+            .items-table tbody tr:not(:last-child) td {
+                border-bottom: 1px solid #cccccc;
             }
             .totals-box {
-                width: 45%;
-                background-color: #D9E2D6 !important;
-                padding: 10px 15px;
+                background-color: #ffffff !important;
+                padding: 10px;
+                border: 2px solid #000000;
             }
             .totals-box table td {
                 padding: 4px 0;
+                font-size: 10pt;
             }
-            .totals-box b {
-                font-weight: 700;
+            .footer {
+                margin-top: 20px;
+                padding-top: 10px;
+                border-top: 1px solid #cccccc;
+                text-align: center;
+                font-size: 9pt;
+                color: #000000;
             }
             .text-left { text-align: left; }
             .text-right { text-align: right; }
@@ -139,67 +188,76 @@ export const BillTemplate = (bill: FinalizedBill, settings: BillLayoutSettings):
                     box-shadow: none;
                     width: auto;
                     min-height: auto;
+                    background: #ffffff;
                 }
             }
         </style>
     </head>
     <body>
         <div class="invoice-box">
-            <div class="main-title">MUGHAL DISTRIBUTORS</div>
-            
-            <table class="bill-info-table">
-                <tr>
-                    <td style="width: 50%;">
-                        <p><b>Bill to:</b> ${bill.storeName}</p>
-                        <p><b>Adress:</b> ${bill.storeAddress}</p>
-                        <p><b>Bill No:</b> #${bill.billNo}</p>
-                        ${settings.showBillDate ? `<p><b>Bill Date:</b> ${getFormattedDate(bill.date)}</p>` : ''}
-                    </td>
-                    <td style="width: 50%; text-align: right;">
-                        <p>ESTIMATE,</p>
-                        <p>Bismillah Plaza, Opp. Sonari Bank</p>
-                        <p>Chinioat Bazar, Faisalabad</p>
-                        ${settings.showPhoneNumber ? `<p>${settings.phoneNumber}</p>` : ''}
-                    </td>
-                </tr>
-            </table>
-
-            <table class="items-table">
-                <thead>
+            <div class="content-wrap">
+                <div class="main-title">${escapeHTML(settings.distributorName)}</div>
+                
+                <table class="bill-info-table">
                     <tr>
-                        <th class="text-center">QTY</th>
-                        <th class="text-left">PRODUCT NAME</th>
-                        <th class="text-center">RATE</th>
-                        <th class="text-center">G.AMT</th>
-                        <th class="text-center">%DISC</th>
-                        ${shouldShowTaxColumn ? '<th class="text-center">TAX</th>' : ''}
-                        ${shouldShowBatchNoColumn ? '<th class="text-center">B.NO</th>' : ''}
-                        <th class="text-center">N.AMT</th>
+                        <td style="width: 50%;">
+                            <p><b>Bill to:</b> ${escapeHTML(bill.storeName)}</p>
+                            <p><b>Address:</b> ${escapeHTML(bill.storeAddress)}</p>
+                            <p><b>Bill No:</b> #${escapeHTML(bill.billNo)}</p>
+                            ${settings.showBillDate ? `<p><b>Bill Date:</b> ${getFormattedDate(bill.date)}</p>` : ''}
+                        </td>
+                        <td style="width: 50%; text-align: right;" class="distributor-info">
+                            <p>${escapeHTML(settings.distributorTitle)}</p>
+                            <p>${escapeHTML(settings.distributorAddressLine1)}</p>
+                            <p>${escapeHTML(settings.distributorAddressLine2)}</p>
+                            ${settings.showPhoneNumber ? `<p>${escapeHTML(settings.phoneNumber)}</p>` : ''}
+                        </td>
                     </tr>
-                </thead>
-                <tbody>
-                    ${itemsHTML}
-                </tbody>
-            </table>
+                </table>
 
-            <div class="totals-section">
-                <div class="totals-box">
-                    <table>
+                <table class="items-table">
+                    <thead>
                         <tr>
-                            <td><b>G.AMT:</b></td>
-                            <td class="text-right">${grossAmount.toFixed(2)}</td>
+                            <th class="text-center">QTY</th>
+                            <th class="text-left">PRODUCT NAME</th>
+                            <th class="text-center">RATE</th>
+                            <th class="text-center">G.AMT</th>
+                            <th class="text-center">%DISC</th>
+                            ${shouldShowTaxColumn ? '<th class="text-center">TAX</th>' : ''}
+                            ${shouldShowBatchNoColumn ? '<th class="text-center">B.NO</th>' : ''}
+                            <th class="text-center">N.AMT</th>
                         </tr>
-                        <tr>
-                            <td><b>NET.AMT:</b></td>
-                            <td class="text-right">${bill.grandTotal.toFixed(2)}</td>
-                        </tr>
-                        <tr>
-                            <td><b>NET.PAYABLE</b></td>
-                            <td class="text-right">${bill.grandTotal.toFixed(2)}</td>
-                        </tr>
-                    </table>
-                </div>
+                    </thead>
+                    <tbody>
+                        ${itemsHTML}
+                    </tbody>
+                </table>
+                
+                <table style="width: 100%; margin-top: 20px;">
+                    <tr>
+                        <td style="width: 55%;"></td>
+                        <td style="width: 45%;">
+                            <div class="totals-box">
+                                <table>
+                                    <tr>
+                                        <td><b>Gross Amount:</b></td>
+                                        <td class="text-right">${grossAmount.toFixed(2)}</td>
+                                    </tr>
+                                    <tr>
+                                        <td><b>Net Amount:</b></td>
+                                        <td class="text-right">${bill.grandTotal.toFixed(2)}</td>
+                                    </tr>
+                                    <tr>
+                                        <td><b>Net Payable:</b></td>
+                                        <td class="text-right"><b>${bill.grandTotal.toFixed(2)}</b></td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </td>
+                    </tr>
+                </table>
             </div>
+            ${footerHTML}
         </div>
     </body>
     </html>

@@ -1,42 +1,17 @@
-import React, { useState } from 'react';
-import { NotificationType } from '../types';
 
-// A simplified version of useLocalStorage for this component, as it doesn't need user prefixes.
-function useAuthStorage<T>(key: string, initialValue: T | (() => T)) {
-    const [storedValue, setStoredValue] = useState<T>(() => {
-        try {
-            const item = window.localStorage.getItem(key);
-            return item ? JSON.parse(item) : (typeof initialValue === 'function' ? (initialValue as () => T)() : initialValue);
-        } catch (error) {
-            return (typeof initialValue === 'function' ? (initialValue as () => T)() : initialValue);
-        }
-    });
-
-    const setValue = (value: T | ((val: T) => T)) => {
-        try {
-            const valueToStore = value instanceof Function ? value(storedValue) : value;
-            setStoredValue(valueToStore);
-            window.localStorage.setItem(key, JSON.stringify(valueToStore));
-        } catch (error) {
-            console.error(error);
-        }
-    };
-    return [storedValue, setValue] as const;
-}
-
-interface User {
-    username: string;
-    // NOTE: In a real-world application, passwords should ALWAYS be hashed.
-    // Storing plain text is insecure. This is for demonstration in a local-only app.
-    password: string;
-}
+import React, { useState, useEffect } from 'react';
+import { NotificationType, User } from '../types';
 
 interface AuthProps {
-    onLoginSuccess: (username: string) => void;
     addNotification: (message: string, type?: NotificationType) => void;
+    onLoginSuccess: (username: string) => void;
+    onSignUp: (user: Omit<User, 'id'>) => boolean;
+    users: User[];
 }
 
-const Auth: React.FC<AuthProps> = ({ onLoginSuccess, addNotification }) => {
+const LAST_USER_KEY = 'mughal_os_last_user';
+
+const Auth: React.FC<AuthProps> = ({ addNotification, onLoginSuccess, onSignUp, users }) => {
     const [isSignUp, setIsSignUp] = useState(false);
 
     // Login Form State
@@ -48,21 +23,29 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess, addNotification }) => {
     const [signUpUsername, setSignUpUsername] = useState('');
     const [signUpPassword, setSignUpPassword] = useState('');
     const [signUpConfirmPassword, setSignUpConfirmPassword] = useState('');
-    
-    // User storage (this is global, not per-user)
-    const [users, setUsers] = useAuthStorage<User[]>('users', []);
+
+    useEffect(() => {
+        const lastUser = localStorage.getItem(LAST_USER_KEY);
+        if(lastUser) {
+            setLoginUsername(lastUser);
+        }
+    }, []);
 
     const handleLogin = (e: React.FormEvent) => {
         e.preventDefault();
         if (!loginUsername.trim() || !loginPassword.trim()) {
-            addNotification('Please enter both username and password.', 'warning');
+            addNotification('Please enter username and password.', 'warning');
             return;
         }
-        const user = users.find(u => u.username.toLowerCase() === loginUsername.toLowerCase());
-        if (user && user.password === loginPassword) {
+
+        const user = users.find(u => u.username.toLowerCase() === loginUsername.trim().toLowerCase());
+        
+        // Use btoa for basic password obfuscation, atob to decode
+        if (user && atob(user.password) === loginPassword) {
             setLoginSuccess(true);
-            // Immediately trigger screen transition, animation will happen concurrently
-            onLoginSuccess(user.username);
+            setTimeout(() => {
+                onLoginSuccess(user.username);
+            }, 1000);
         } else {
             addNotification('Invalid username or password.', 'error');
         }
@@ -70,7 +53,8 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess, addNotification }) => {
 
     const handleSignUp = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!signUpUsername.trim() || !signUpPassword.trim()) {
+        const trimmedUsername = signUpUsername.trim();
+        if (!trimmedUsername || !signUpPassword.trim()) {
             addNotification('Username and password cannot be empty.', 'warning');
             return;
         }
@@ -78,15 +62,21 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess, addNotification }) => {
             addNotification('Passwords do not match.', 'error');
             return;
         }
-        const userExists = users.some(u => u.username.toLowerCase() === signUpUsername.toLowerCase());
-        if (userExists) {
-            addNotification('Username is already taken.', 'error');
-            return;
-        }
+        
+        const success = onSignUp({
+            username: trimmedUsername,
+            password: btoa(signUpPassword) // Store encoded password
+        });
 
-        const newUser: User = { username: signUpUsername, password: signUpPassword };
-        setUsers(prevUsers => [...prevUsers, newUser]);
-        onLoginSuccess(newUser.username);
+        if (success) {
+            addNotification('Account created successfully!', 'success');
+            setSignUpUsername('');
+            setSignUpPassword('');
+            setSignUpConfirmPassword('');
+            setIsSignUp(false); // Flip back to login form
+        } else {
+            addNotification(`Username "${trimmedUsername}" is already taken.`, 'error');
+        }
     };
 
     return (

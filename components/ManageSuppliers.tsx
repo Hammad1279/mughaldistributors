@@ -143,7 +143,7 @@ export default function ManageSuppliers() {
         };
     }, [contextMenu.visible, closeContextMenu]);
 
-    const handleSave = useCallback(async (supplierData: Omit<Supplier, 'id'> & { id?: string | null }) => {
+    const handleSave = useCallback((supplierData: Omit<Supplier, 'id'> & { id?: string | null }) => {
         const finalData = {
             name: supplierData.name,
             address: supplierData.address,
@@ -152,22 +152,21 @@ export default function ManageSuppliers() {
         };
 
         if (supplierData.id) { // Editing
-            await updateSupplier({ ...finalData, id: supplierData.id });
+            updateSupplier({ ...finalData, id: supplierData.id });
             addNotification("Supplier updated!", "success");
         } else { // Adding
-            await addSupplier(finalData);
+            addSupplier(finalData);
             addNotification("Supplier added!", "success");
         }
         setIsModalOpen(false);
         closeContextMenu();
     }, [addSupplier, updateSupplier, addNotification, closeContextMenu]);
     
-    const handleDelete = useCallback(async (supplierId: string | null) => {
+    const handleDelete = useCallback((supplierId: string | null) => {
         if (!supplierId) return;
         const supplier = suppliers.find(s => s.id === supplierId);
         if (supplier) {
-            // FIX: The deleteSupplier function expects the entire supplier object, not just the ID.
-            await deleteSupplier(supplier);
+            deleteSupplier(supplier.id);
             addNotification(`"${supplier.name}" was deleted.`, 'info');
         }
         closeContextMenu();

@@ -1,7 +1,9 @@
 
+
 import React, { useState, useEffect, useCallback, createContext, useContext, ReactNode, useMemo, useRef, useLayoutEffect } from 'react';
-import { AppView, Medicine, MedicalStore, FinalizedBill, CartItem, NotificationState, NotificationType, Supplier, FinalizedPurchase, AppSection, PurchaseRowData, BillLayoutSettings, SalesSettings, MedicineDefinition, UserMedicineData } from './types';
+import { AppView, Medicine, MedicalStore, FinalizedBill, CartItem, NotificationState, NotificationType, Supplier, FinalizedPurchase, AppSection, PurchaseRowData, BillLayoutSettings, SalesSettings, MedicineDefinition, UserMedicineData, AppContextType, AppData, User } from './types';
 import { INITIAL_MEDICINES_DATA } from './constants';
+
 import ManageStores from './components/ManageStores';
 import Inventory from './components/Inventory';
 import CreateBill from './components/CreateBill';
@@ -18,131 +20,10 @@ import ProfitReport from './components/ProfitReport';
 import Calculator from './components/Calculator';
 import { CapsLockModal } from './components/CapsLockModal';
 import Auth from './components/Auth';
-
+import LoginLoader from './components/LoginLoader';
 
 declare var Fuse: any;
 
-// --- LOCAL STORAGE HOOK ---
-// Modified to accept an optional userPrefix to namespace data per user.
-function useLocalStorage<T>(key: string, initialValue: T | (() => T), userPrefix?: string) {
-    const prefixedKey = userPrefix ? `${userPrefix}_${key}` : key;
-
-    const [storedValue, setStoredValue] = useState<T>(() => {
-        try {
-            const item = window.localStorage.getItem(prefixedKey);
-            return item ? JSON.parse(item) : (typeof initialValue === 'function' ? (initialValue as () => T)() : initialValue);
-        } catch (error) {
-            console.error(`Error reading localStorage key “${prefixedKey}”:`, error);
-            return (typeof initialValue === 'function' ? (initialValue as () => T)() : initialValue);
-        }
-    });
-
-    useEffect(() => {
-        try {
-            // Do not persist initial value if it's the same, to avoid cluttering local storage for new users
-            const item = window.localStorage.getItem(prefixedKey);
-            const currentValueStr = JSON.stringify(storedValue);
-            
-            // Only write to localStorage if the value is different or if it's a new key
-            if (item !== currentValueStr) {
-                window.localStorage.setItem(prefixedKey, currentValueStr);
-            }
-        } catch (error) {
-            console.error(`Error setting localStorage key “${prefixedKey}”:`, error);
-        }
-    }, [prefixedKey, storedValue]);
-
-    return [storedValue, setStoredValue] as const;
-}
-
-
-// --- APP CONTEXT ---
-interface AppContextType {
-    // Data collections (from local storage)
-    medicines: Medicine[];
-    medicalStores: MedicalStore[];
-    finalizedBills: FinalizedBill[];
-    suppliers: Supplier[];
-    finalizedPurchases: FinalizedPurchase[];
-    billLayoutSettings: BillLayoutSettings;
-    salesSettings: SalesSettings;
-
-    // CRUD Operations
-    addMedicine: (med: Omit<Medicine, 'id' | 'lastUpdated'>) => Promise<string>;
-    updateMedicine: (med: Medicine) => Promise<void>;
-    deleteMedicine: (id: string) => Promise<void>;
-
-    addMedicalStore: (store: Omit<MedicalStore, 'id'>) => Promise<void>;
-    updateMedicalStore: (store: MedicalStore) => Promise<void>;
-    deleteMedicalStore: (id: string) => Promise<void>;
-    
-    addSupplier: (supplier: Omit<Supplier, 'id'>) => Promise<void>;
-    updateSupplier: (supplier: Supplier) => Promise<void>;
-    deleteSupplier: (supplier: Supplier) => Promise<void>;
-    
-    finalizeBill: (billData: Omit<FinalizedBill, 'billNo' | 'date'>, isEditing: boolean, billNoToUse: number) => Promise<number | undefined>;
-    deleteFinalizedBill: (billNo: number) => Promise<void>;
-    
-    postPurchase: (purchaseData: Omit<FinalizedPurchase, 'purchaseId' | 'date'>, editingPurchaseId?: number | null) => Promise<void>;
-    deleteFinalizedPurchase: (purchaseId: number) => Promise<void>;
-
-    updateBillLayoutSettings: (newSettings: Partial<BillLayoutSettings>) => void;
-    updateSalesSettings: (newSettings: Partial<SalesSettings>) => void;
-
-    // Data Management
-    importData: (data: any) => void;
-    clearAllData: (includeShared?: boolean) => void;
-    exportData: () => {
-        medicineDefinitions: MedicineDefinition[];
-        userMedicineData: Record<string, UserMedicineData>;
-        medicalStores: MedicalStore[];
-        suppliers: Supplier[];
-        finalizedBills: FinalizedBill[];
-        finalizedPurchases: FinalizedPurchase[];
-        billLayoutSettings: BillLayoutSettings;
-        salesSettings: SalesSettings;
-    };
-
-
-    // Client-side state
-    cart: CartItem[]; setCart: React.Dispatch<React.SetStateAction<CartItem[]>>;
-    purchaseCart: Record<string, PurchaseRowData>; setPurchaseCart: React.Dispatch<React.SetStateAction<Record<string, PurchaseRowData>>>;
-    purchaseCartOrder: string[]; setPurchaseCartOrder: React.Dispatch<React.SetStateAction<string[]>>;
-    currentBillingStoreID: string | null; setCurrentBillingStoreID: React.Dispatch<React.SetStateAction<string | null>>;
-    currentPurchaseSupplierID: string | null; setCurrentPurchaseSupplierID: React.Dispatch<React.SetStateAction<string | null>>;
-    currentViewingSupplierId: string | null; setCurrentViewingSupplierId: React.Dispatch<React.SetStateAction<string | null>>;
-    editingBillNo: number | null; setEditingBillNo: React.Dispatch<React.SetStateAction<number | null>>;
-    editingPurchaseId: number | null; setEditingPurchaseId: React.Dispatch<React.SetStateAction<number | null>>;
-    billFilterStoreID: string | null;
-    
-    // UI
-    addNotification: (message: string, type?: NotificationType) => void;
-    activeView: AppView;
-    setActiveView: React.Dispatch<React.SetStateAction<AppView>>;
-    activeSection: AppSection;
-    setActiveSection: React.Dispatch<React.SetStateAction<AppSection>>;
-    navigateToSection: (section: AppSection, element?: HTMLElement) => void;
-    startBillingForStore: (storeId: string) => void;
-    startPurchaseForSupplier: (supplierId: string) => void;
-    startEditingPurchase: (purchase: FinalizedPurchase) => void;
-    viewPurchaseHistoryForSupplier: (supplierId: string) => void;
-    viewBillsForStore: (storeId: string) => void;
-    clearBillFilter: () => void;
-    resetBillingSession: () => void;
-    resetPurchaseSession: () => void;
-    // Track transition state
-    transitionElement: HTMLElement | null;
-    
-    // UI - Hover/Focus state for bill item discount
-    focusedMed: Medicine | null;
-    setFocusedMed: React.Dispatch<React.SetStateAction<Medicine | null>>;
-    hoveredMed: Medicine | null;
-    setHoveredMed: React.Dispatch<React.SetStateAction<Medicine | null>>;
-
-    // Calculator state
-    isCalculatorOpen: boolean;
-    setIsCalculatorOpen: React.Dispatch<React.SetStateAction<boolean>>;
-}
 const AppContext = createContext<AppContextType | null>(null);
 export const useAppContext = () => {
     const context = useContext(AppContext);
@@ -150,215 +31,77 @@ export const useAppContext = () => {
     return context;
 };
 
-// --- MODAL FOR RESUMING BILL ---
-const ResumeBillModal: React.FC<{
-    isOpen: boolean;
-    onContinue: () => void;
-    onStartNew: () => void;
-    onClose: () => void;
-}> = ({ isOpen, onContinue, onStartNew, onClose }) => {
-    return (
-        <Modal isOpen={isOpen} onClose={onClose} title="Unfinished Bill">
-            <div className="text-center p-4">
-                <Icon name="help" className="text-5xl text-violet-400 mb-4" />
-                <p className="text-slate-300 mb-2 text-lg">You have a bill in progress.</p>
-                <p className="text-slate-400 mb-8">
-                    Would you like to continue where you left off or start a new one?
-                </p>
-                <div className="flex justify-center gap-4">
-                    <Button onClick={onStartNew} variant="secondary" icon="post_add">
-                        Start New Bill
-                    </Button>
-                    <Button onClick={onContinue} variant="primary" icon="login" autoFocus>
-                        Continue Editing
-                    </Button>
-                </div>
-            </div>
-        </Modal>
-    );
-};
-
-// --- MODAL FOR RESUMING PURCHASE ---
-const ResumePurchaseModal: React.FC<{
-    isOpen: boolean;
-    onContinue: () => void;
-    onStartNew: () => void;
-    onClose: () => void;
-}> = ({ isOpen, onContinue, onStartNew, onClose }) => {
-    return (
-        <Modal isOpen={isOpen} onClose={onClose} title="Unfinished Purchase">
-            <div className="text-center p-4">
-                <Icon name="help" className="text-5xl text-violet-400 mb-4" />
-                <p className="text-slate-300 mb-2 text-lg">You have a purchase in progress.</p>
-                <p className="text-slate-400 mb-8">
-                    Would you like to continue where you left off or start a new one?
-                </p>
-                <div className="flex justify-center gap-4">
-                    <Button onClick={onStartNew} variant="secondary" icon="post_add">
-                        Start New Purchase
-                    </Button>
-                    <Button onClick={onContinue} variant="primary" icon="login" autoFocus>
-                        Continue Editing
-                    </Button>
-                </div>
-            </div>
-        </Modal>
-    );
-};
-
-
 // --- APP PROVIDER ---
 const AppProvider: React.FC<{ 
     children: ReactNode; 
-    currentUser: string; 
-    onLogout: () => void; 
-    isAnimatingIn: boolean; 
+    appData: AppData;
+    updateAppData: (updater: (currentData: AppData) => AppData) => void;
     addNotification: (message: string, type?: NotificationType) => void;
-    activeView: AppView;
-    setActiveView: React.Dispatch<React.SetStateAction<AppView>>;
-    activeSection: AppSection;
-    setActiveSection: React.Dispatch<React.SetStateAction<AppSection>>;
-    navigateToSection: (section: AppSection, element?: HTMLElement) => void;
-    transitionElement: HTMLElement | null; 
-    transitionTargetView: AppView | null;
-    handleTransitionEnd: () => void;
-    renderViewComponent: (view: AppView) => React.ReactNode;
-}> = ({ children, currentUser, onLogout, isAnimatingIn, addNotification, activeView, setActiveView, activeSection, setActiveSection, navigateToSection, transitionElement, transitionTargetView, handleTransitionEnd, renderViewComponent }) => {
-    // --- Data from Local Storage ---
-    // NEW: Shared global medicine definitions (no user prefix)
-    const [globalMedicines, setGlobalMedicines] = useLocalStorage<MedicineDefinition[]>('global_medicine_definitions', [], undefined);
-    // NEW: User-specific medicine data
-    const [userMedicineData, setUserMedicineData] = useLocalStorage<Record<string, UserMedicineData>>('user_medicine_data', {}, currentUser);
+    isLoggedIn: boolean;
+}> = ({ children, appData, updateAppData, addNotification, isLoggedIn }) => {
+    const [activeSection, setActiveSection] = useState<AppSection>('welcome');
+    const [activeView, setActiveView] = useState<AppView>('welcome');
+    
+    const [transitionElement, setTransitionElement] = useState<HTMLElement | null>(null);
+    const [transitionTargetView, setTransitionTargetView] = useState<AppView | null>(null);
+    
+    const { 
+        global_medicine_definitions: globalMedicines,
+        user_medicine_data: userMedicineData
+    } = appData;
 
-    const [medicalStores, setMedicalStores] = useLocalStorage<MedicalStore[]>('medicalStores', [], currentUser);
-    const [finalizedBills, setFinalizedBills] = useLocalStorage<FinalizedBill[]>('finalizedBills', [], currentUser);
-    const [suppliers, setSuppliers] = useLocalStorage<Supplier[]>('suppliers', [], currentUser);
-    const [finalizedPurchases, setFinalizedPurchases] = useLocalStorage<FinalizedPurchase[]>('finalizedPurchases', [], currentUser);
+    // --- Re-hydrating client-side state from loaded user data file ---
+    const [cart, setCart] = useState<CartItem[]>(appData.cart);
+    const [purchaseCart, setPurchaseCart] = useState<Record<string, PurchaseRowData>>(appData.purchaseCart);
+    const [purchaseCartOrder, setPurchaseCartOrder] = useState<string[]>(appData.purchaseCartOrder);
+    const [currentBillingStoreID, setCurrentBillingStoreID] = useState<string | null>(appData.currentBillingStoreID);
+    const [currentPurchaseSupplierID, setCurrentPurchaseSupplierID] = useState<string | null>(appData.currentPurchaseSupplierID);
+    const [currentViewingSupplierId, setCurrentViewingSupplierId] = useState<string | null>(appData.currentViewingSupplierId);
+    const [editingBillNo, setEditingBillNo] = useState<number | null>(appData.editingBillNo);
+    const [editingPurchaseId, setEditingPurchaseId] = useState<number | null>(appData.editingPurchaseId);
+    const [billFilterStoreID, setBillFilterStoreID] = useState<string | null>(appData.billFilterStoreID);
     
-    // --- Client-side State (Persisted) ---
-    const [cart, setCart] = useLocalStorage<CartItem[]>('cart', [], currentUser);
-    const [purchaseCart, setPurchaseCart] = useLocalStorage<Record<string, PurchaseRowData>>('purchaseCart', {}, currentUser);
-    const [purchaseCartOrder, setPurchaseCartOrder] = useLocalStorage<string[]>('purchaseCartOrder', [], currentUser);
-    const [currentBillingStoreID, setCurrentBillingStoreID] = useLocalStorage<string | null>('currentBillingStoreID', null, currentUser);
-    const [currentPurchaseSupplierID, setCurrentPurchaseSupplierID] = useLocalStorage<string | null>('currentPurchaseSupplierID', null, currentUser);
-    const [currentViewingSupplierId, setCurrentViewingSupplierId] = useLocalStorage<string | null>('currentViewingSupplierId', null, currentUser);
-    const [editingBillNo, setEditingBillNo] = useLocalStorage<number | null>('editingBillNo', null, currentUser);
-    const [editingPurchaseId, setEditingPurchaseId] = useLocalStorage<number | null>('editingPurchaseId', null, currentUser);
-    const [billFilterStoreID, setBillFilterStoreID] = useLocalStorage<string | null>('billFilterStoreID', null, currentUser);
-    const [billLayoutSettings, setBillLayoutSettings] = useLocalStorage<BillLayoutSettings>('billLayoutSettings', {
-        showPhoneNumber: true,
-        showBillDate: true,
-        phoneNumber: '03040297400',
-    }, currentUser);
-    const [salesSettings, setSalesSettings] = useLocalStorage<SalesSettings>('salesSettings', {
-        showSalesTaxColumn: false,
-        showBatchNo: true,
-    }, currentUser);
-    
+    // --- Save client state back to the main data object before saving to file ---
+    useEffect(() => { updateAppData(ud => ({ ...ud, cart })); }, [cart, updateAppData]);
+    useEffect(() => { updateAppData(ud => ({ ...ud, purchaseCart })); }, [purchaseCart, updateAppData]);
+    useEffect(() => { updateAppData(ud => ({ ...ud, purchaseCartOrder })); }, [purchaseCartOrder, updateAppData]);
+    useEffect(() => { updateAppData(ud => ({ ...ud, currentBillingStoreID })); }, [currentBillingStoreID, updateAppData]);
+    useEffect(() => { updateAppData(ud => ({ ...ud, currentPurchaseSupplierID })); }, [currentPurchaseSupplierID, updateAppData]);
+    useEffect(() => { updateAppData(ud => ({ ...ud, currentViewingSupplierId })); }, [currentViewingSupplierId, updateAppData]);
+    useEffect(() => { updateAppData(ud => ({ ...ud, editingBillNo })); }, [editingBillNo, updateAppData]);
+    useEffect(() => { updateAppData(ud => ({ ...ud, editingPurchaseId })); }, [editingPurchaseId, updateAppData]);
+    useEffect(() => { updateAppData(ud => ({ ...ud, billFilterStoreID })); }, [billFilterStoreID, updateAppData]);
+
     // --- Transient State (Not Persisted) ---
-    const [isResumeBillModalOpen, setIsResumeBillModalOpen] = useState(false);
-    const [isResumePurchaseModalOpen, setIsResumePurchaseModalOpen] = useState(false);
     const [focusedMed, setFocusedMed] = useState<Medicine | null>(null);
     const [hoveredMed, setHoveredMed] = useState<Medicine | null>(null);
     const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
+    const [isCapsLockOn, setIsCapsLockOn] = useState(true);
+
+    useEffect(() => {
+        const checkCapsLock = (event: KeyboardEvent | MouseEvent) => {
+            if (typeof event.getModifierState === 'function') {
+                setIsCapsLockOn(event.getModifierState("CapsLock"));
+            }
+        };
+        window.addEventListener('keydown', checkCapsLock);
+        window.addEventListener('keyup', checkCapsLock);
+        window.addEventListener('mousedown', checkCapsLock);
+        return () => {
+            window.removeEventListener('keydown', checkCapsLock);
+            window.removeEventListener('keyup', checkCapsLock);
+            window.removeEventListener('mousedown', checkCapsLock);
+        };
+    }, []);
+
+    const capsLockRequired = activeView === 'create-bill';
+    const showCapsLockModal = capsLockRequired && !isCapsLockOn;
     
-    // --- DATA MIGRATION from user-specific inventory to shared inventory ---
-    useEffect(() => {
-        const migrationKey = `${currentUser}_migration_v2_shared_inventory`;
-        if (localStorage.getItem(migrationKey)) return;
-
-        const oldUserMedicinesRaw = localStorage.getItem(`${currentUser}_medicines`);
-        if (!oldUserMedicinesRaw) {
-            localStorage.setItem(migrationKey, 'true');
-            return;
-        }
-
-        console.log(`Running migration to shared inventory for user: ${currentUser}`);
-        
-        const oldUserMedicines: Medicine[] = JSON.parse(oldUserMedicinesRaw);
-        
-        setGlobalMedicines(currentGlobalDefs => {
-            const newGlobalDefs = [...currentGlobalDefs];
-            const globalDefMap = new Map(newGlobalDefs.map(d => [d.name.toLowerCase().trim(), d]));
-            
-            const newUserMedicineData: Record<string, UserMedicineData> = {};
-
-            oldUserMedicines.forEach(oldMed => {
-                const normalizedName = oldMed.name.toLowerCase().trim();
-                let globalDef = globalDefMap.get(normalizedName);
-
-                if (!globalDef) {
-                    globalDef = {
-                        id: crypto.randomUUID(),
-                        name: oldMed.name,
-                        company: oldMed.company,
-                        type: oldMed.type,
-                        tags: oldMed.tags,
-                    };
-                    newGlobalDefs.push(globalDef);
-                    globalDefMap.set(normalizedName, globalDef);
-                }
-
-                newUserMedicineData[globalDef.id] = {
-                    price: oldMed.price,
-                    discount: oldMed.discount,
-                    saleDiscount: oldMed.saleDiscount,
-                    batchNo: oldMed.batchNo,
-                    lastUpdated: oldMed.lastUpdated,
-                };
-            });
-
-            setUserMedicineData(newUserMedicineData); 
-            return newGlobalDefs;
-        });
-
-        localStorage.removeItem(`${currentUser}_medicines`);
-        localStorage.setItem(migrationKey, 'true');
-        addNotification('Inventory system updated successfully.', 'success');
-    }, [currentUser, setGlobalMedicines, setUserMedicineData, addNotification]);
-
-
-    // Seed initial data if global storage is empty
-    useEffect(() => {
-        const appInitializedKey = `global_appInitialized`; // Use a global key
-        const appInitialized = localStorage.getItem(appInitializedKey);
-        if (!appInitialized && globalMedicines.length === 0) {
-            console.log("Seeding initial global medicine data...");
-            const initialDefs: MedicineDefinition[] = [];
-            const initialUserData: Record<string, UserMedicineData> = {};
-
-            INITIAL_MEDICINES_DATA.forEach(med => {
-                const id = crypto.randomUUID();
-                initialDefs.push({
-                    id,
-                    name: med.name,
-                    company: med.company,
-                    type: med.type,
-                    tags: med.name.toLowerCase().split(/\s+/).filter(Boolean),
-                });
-                initialUserData[id] = {
-                    price: null,
-                    discount: med.discount,
-                    saleDiscount: med.saleDiscount,
-                    batchNo: '',
-                    lastUpdated: new Date().toISOString(),
-                };
-            });
-
-            setGlobalMedicines(initialDefs);
-            setUserMedicineData(initialUserData);
-
-            if (medicalStores.length === 0) {
-                setMedicalStores([{ id: crypto.randomUUID(), name: 'Demo Store', address: 'For testing and demonstration purposes' }]);
-            }
-            if (suppliers.length === 0) {
-                setSuppliers([{ id: crypto.randomUUID(), name: 'Demo Supplier', address: 'Default vendor for purchases' }]);
-            }
-            localStorage.setItem(appInitializedKey, 'true');
-        }
-    }, [globalMedicines.length, medicalStores.length, suppliers.length, setGlobalMedicines, setUserMedicineData, setMedicalStores, setSuppliers]); 
-
-    // NEW: Create the combined `medicines` array for the rest of the app to use
+    const { 
+        medicalStores, finalizedBills, suppliers, finalizedPurchases,
+        billLayoutSettings, salesSettings
+    } = appData;
+    
     const medicines = useMemo<Medicine[]>(() => {
         return globalMedicines.map(def => {
             const userData = userMedicineData[def.id];
@@ -372,224 +115,176 @@ const AppProvider: React.FC<{
             };
         });
     }, [globalMedicines, userMedicineData]);
-
-    // --- CRUD Functions for Local Storage ---
-    const addMedicine = useCallback(async (medData: Omit<Medicine, 'id' | 'lastUpdated'>): Promise<string> => {
-        let definitionId: string;
-        
-        const existingDef = globalMedicines.find(def => def.name.trim().toLowerCase() === medData.name.trim().toLowerCase());
-
-        if (existingDef) {
-            definitionId = existingDef.id;
-        } else {
-            definitionId = crypto.randomUUID();
-            const newDefinition: MedicineDefinition = {
-                id: definitionId,
-                name: medData.name,
-                company: medData.company,
-                type: medData.type,
-                tags: medData.tags,
+    
+    const handleTransitionEnd = () => {
+        if (transitionTargetView) {
+            const sectionMapView: Record<AppSection, AppView[]> = {
+                'welcome': ['welcome'],
+                'sales': ['manage-stores', 'create-bill', 'your-bills'],
+                'sales-only': ['manage-stores', 'create-bill', 'your-bills'],
+                'purchase': ['manage-suppliers', 'purchase-entry', 'purchase-history', 'inventory', 'your-purchases'],
+                'reports': ['settings', 'profit-report', 'discount-sheet']
             };
-            setGlobalMedicines(prev => [...prev, newDefinition]);
+            const newSection = (Object.keys(sectionMapView) as AppSection[]).find(sec => 
+                sectionMapView[sec].includes(transitionTargetView)
+            ) || 'welcome';
+            
+            setActiveSection(newSection);
+            setActiveView(transitionTargetView);
         }
+        if (transitionElement) {
+            transitionElement.classList.remove('is-transitioning');
+        }
+        setTransitionElement(null);
+        setTransitionTargetView(null);
+    };
+
+    const renderViewComponent = (view: AppView): React.ReactNode => {
+        switch (view) {
+            case 'manage-stores': return <ManageStores />;
+            case 'create-bill': return <CreateBill />;
+            case 'your-bills': return <YourBills />;
+            case 'inventory': return <Inventory />;
+            case 'settings': return <Settings />;
+            case 'manage-suppliers': return <ManageSuppliers />;
+            case 'purchase-entry': return <Purchase />;
+            case 'purchase-history': return <PurchaseHistory />;
+            case 'your-purchases': return <YourPurchases />;
+            case 'discount-sheet': return <DiscountSheet />;
+            case 'profit-report': return <ProfitReport />;
+            default: return null;
+        }
+    };
+
+    // Data manipulation functions
+    const addMedicalStore = useCallback((store: Omit<MedicalStore, 'id'>) => {
+        updateAppData(ad => ({ ...ad, medicalStores: [...ad.medicalStores, { ...store, id: crypto.randomUUID() }] }));
+    }, [updateAppData]);
+
+    const updateMedicalStore = useCallback((store: MedicalStore) => {
+        updateAppData(ad => ({ ...ad, medicalStores: ad.medicalStores.map(s => s.id === store.id ? store : s) }));
+    }, [updateAppData]);
+
+    const deleteMedicalStore = useCallback((storeId: string) => {
+        updateAppData(ad => ({ ...ad, medicalStores: ad.medicalStores.filter(s => s.id !== storeId) }));
+    }, [updateAppData]);
+
+    const addMedicine = useCallback((medData: Omit<Medicine, 'id' | 'lastUpdated'>): string => {
+        const newId = crypto.randomUUID();
+        const newDef: MedicineDefinition = { id: newId, name: medData.name, company: medData.company, type: medData.type, tags: medData.tags };
+        const newUserData: UserMedicineData = { price: medData.price, discount: medData.discount, saleDiscount: medData.saleDiscount, batchNo: medData.batchNo, lastUpdated: new Date().toISOString() };
         
-        const newUserData: UserMedicineData = {
-            price: medData.price,
-            discount: medData.discount,
-            saleDiscount: medData.saleDiscount,
-            batchNo: medData.batchNo,
-            lastUpdated: new Date().toISOString(),
-        };
-        setUserMedicineData(prev => ({...prev, [definitionId]: newUserData}));
+        updateAppData(ad => ({
+            ...ad, 
+            global_medicine_definitions: [...ad.global_medicine_definitions, newDef],
+            user_medicine_data: {...ad.user_medicine_data, [newId]: newUserData }
+        }));
+        return newId;
+    }, [updateAppData]);
 
-        return definitionId;
-    }, [globalMedicines, setGlobalMedicines, setUserMedicineData]);
-
-    const updateMedicine = useCallback(async (med: Medicine) => {
+    const updateMedicine = useCallback((med: Medicine) => {
         const { id, name, company, type, tags, ...userData } = med;
+        const userUpdate: UserMedicineData = { ...userData, lastUpdated: new Date().toISOString() };
+        updateAppData(ad => ({ ...ad, user_medicine_data: { ...ad.user_medicine_data, [id]: { ...(ad.user_medicine_data[id] || {}), ...userUpdate } }}));
+    }, [updateAppData]);
+
+    const deleteMedicine = useCallback((medId: string) => {
+        addNotification("Deleting from global inventory is not supported in this version.", "info");
+    }, [addNotification]);
+
+    const finalizeBill = useCallback((billData: Omit<FinalizedBill, 'billNo' | 'date'>, isEditing: boolean, billNo: number): number | null => {
+        const finalBill: FinalizedBill = { ...billData, billNo: billNo, date: new Date().toISOString() };
         
-        const definitionUpdate: MedicineDefinition = { id, name, company, type, tags };
-        setGlobalMedicines(prev => prev.map(m => m.id === id ? definitionUpdate : m));
+        updateAppData(ad => {
+            const newFinalizedBills = isEditing 
+                ? ad.finalizedBills.map(b => b.billNo === billNo ? finalBill : b) 
+                : [...ad.finalizedBills, finalBill];
 
-        const userMedicineUpdate: UserMedicineData = { ...userData, lastUpdated: new Date().toISOString() };
-        setUserMedicineData(prev => ({ ...prev, [id]: userMedicineUpdate }));
-    }, [setGlobalMedicines, setUserMedicineData]);
-    
-    const deleteMedicine = useCallback(async (id: string) => {
-        // NOTE: This only deletes the user's data (price, etc.), not the global name.
-        // This prevents one user from deleting a medicine name for everyone.
-        setUserMedicineData(prev => {
-            const { [id]: _, ...rest } = prev;
-            return rest;
-        });
-        addNotification("Removed medicine data from your personal inventory.", "info");
-    }, [setUserMedicineData, addNotification]);
-    
-    const addMedicalStore = useCallback(async (storeData: Omit<MedicalStore, 'id'>) => {
-        const newStore: MedicalStore = { ...storeData, id: crypto.randomUUID() };
-        setMedicalStores(prev => [...prev, newStore]);
-    }, [setMedicalStores]);
-    
-    const updateMedicalStore = useCallback(async (store: MedicalStore) => {
-        setMedicalStores(prev => prev.map(s => s.id === store.id ? store : s));
-    }, [setMedicalStores]);
-    
-    const deleteMedicalStore = useCallback(async (id: string) => {
-        setMedicalStores(prev => prev.filter(s => s.id !== id));
-    }, [setMedicalStores]);
-
-    const addSupplier = useCallback(async (supplierData: Omit<Supplier, 'id'>) => {
-        const newSupplier: Supplier = { ...supplierData, id: crypto.randomUUID() };
-        setSuppliers(prev => [...prev, newSupplier]);
-    }, [setSuppliers]);
-    
-    const updateSupplier = useCallback(async (supplier: Supplier) => {
-        setSuppliers(prev => prev.map(s => s.id === supplier.id ? supplier : s));
-    }, [setSuppliers]);
-    
-    const deleteSupplier = useCallback(async (supplier: Supplier) => {
-        setSuppliers(prev => prev.filter(s => s.id !== supplier.id));
-    }, [setSuppliers]);
-
-    const finalizeBill = useCallback(async (billData: Omit<FinalizedBill, 'billNo' | 'date'>, isEditing: boolean, billNoToUse: number) => {
-        if (isEditing) {
-            const originalBill = finalizedBills.find(b => b.billNo === billNoToUse);
-            const updatedBill: FinalizedBill = {
-                ...billData,
-                billNo: billNoToUse,
-                date: originalBill?.date || new Date().toISOString(),
-            };
-            setFinalizedBills(prev => prev.map(b => b.billNo === billNoToUse ? updatedBill : b));
-            return billNoToUse;
-        } else {
-            const newBill: FinalizedBill = {
-                ...billData,
-                billNo: billNoToUse,
-                date: new Date().toISOString(),
-            };
-            setFinalizedBills(prev => [...prev, newBill]);
-            return billNoToUse;
-        }
-    }, [finalizedBills, setFinalizedBills]);
-    
-    const deleteFinalizedBill = useCallback(async (billNo: number) => {
-        setFinalizedBills(prev => prev.filter(b => b.billNo !== billNo));
-        addNotification(`Bill #${billNo} deleted.`, 'info');
-    }, [setFinalizedBills, addNotification]);
-    
-    const postPurchase = useCallback(async (purchaseData: Omit<FinalizedPurchase, 'purchaseId' | 'date'>, editingPurchaseId?: number | null) => {
-        if (editingPurchaseId) { // --- UPDATE EXISTING PURCHASE ---
-            setFinalizedPurchases(prev =>
-                prev.map(p => {
-                    if (p.purchaseId === editingPurchaseId) {
-                        return {
-                            ...purchaseData,
-                            purchaseId: editingPurchaseId,
-                            date: p.date, // Keep original date
-                        };
-                    }
-                    return p;
-                })
-            );
-            addNotification(`Purchase #${editingPurchaseId} updated successfully!`, 'success');
-        } else { // --- CREATE NEW PURCHASE ---
-            const maxId = finalizedPurchases.reduce((max, p) => Math.max(max, p.purchaseId), 0);
-            const newPurchaseId = maxId + 1;
-
-            const newPurchase: FinalizedPurchase = {
-                ...purchaseData,
-                purchaseId: newPurchaseId,
-                date: new Date().toISOString(),
-            };
-            setFinalizedPurchases(prev => [...prev, newPurchase]);
-            addNotification(`Purchase #${newPurchaseId} posted successfully!`, 'success');
-        }
-
-        // --- UPDATE MEDICINE PRICES (COMMON FOR BOTH CREATE AND UPDATE) ---
-        setUserMedicineData(currentUserData => {
-            const updatedUserData = { ...currentUserData };
-            purchaseData.items.forEach(item => {
-                updatedUserData[item.medicineId] = {
-                    ...(updatedUserData[item.medicineId] || {} as UserMedicineData),
-                    price: item.rate,
-                    discount: item.discount, // This updates the PURCHASE discount
-                    batchNo: item.batchNo,
-                    lastUpdated: new Date().toISOString(),
-                };
+            const newUserMedicineData = { ...ad.user_medicine_data };
+            finalBill.items.forEach(item => {
+                if (newUserMedicineData[item.id]) {
+                    newUserMedicineData[item.id] = {
+                        ...newUserMedicineData[item.id],
+                        saleDiscount: item.discountValue,
+                        lastUpdated: new Date().toISOString()
+                    };
+                }
             });
-            return updatedUserData;
-        });
-    }, [finalizedPurchases, setFinalizedPurchases, setUserMedicineData, addNotification]);
 
-    const deleteFinalizedPurchase = useCallback(async (purchaseId: number) => {
-        setFinalizedPurchases(prev => prev.filter(p => p.purchaseId !== purchaseId));
+            return {
+                ...ad,
+                finalizedBills: newFinalizedBills,
+                user_medicine_data: newUserMedicineData
+            };
+        });
+
+        return finalBill.billNo;
+    }, [updateAppData]);
+
+    const deleteFinalizedBill = useCallback((billNo: number) => {
+        updateAppData(ad => ({ ...ad, finalizedBills: ad.finalizedBills.filter(b => b.billNo !== billNo) }));
+    }, [updateAppData]);
+
+    const addSupplier = useCallback((supplier: Omit<Supplier, 'id'>) => {
+        updateAppData(ad => ({ ...ad, suppliers: [...ad.suppliers, { ...supplier, id: crypto.randomUUID() }] }));
+    }, [updateAppData]);
+
+    const updateSupplier = useCallback((supplier: Supplier) => {
+        updateAppData(ad => ({ ...ad, suppliers: ad.suppliers.map(s => s.id === supplier.id ? supplier : s) }));
+    }, [updateAppData]);
+
+    const deleteSupplier = useCallback((supplierId: string) => {
+        updateAppData(ad => ({ ...ad, suppliers: ad.suppliers.filter(s => s.id !== supplierId) }));
+    }, [updateAppData]);
+    
+    const postPurchase = useCallback((purchaseData: Omit<FinalizedPurchase, 'purchaseId' | 'date'>, editingId: number | null) => {
+        updateAppData(ad => {
+            let finalizedPurchases;
+            let purchaseId;
+            if (editingId) {
+                const updatedPurchase: FinalizedPurchase = { ...purchaseData, purchaseId: editingId, date: new Date().toISOString() };
+                finalizedPurchases = ad.finalizedPurchases.map(p => p.purchaseId === editingId ? updatedPurchase : p);
+                purchaseId = editingId;
+                addNotification(`Purchase #${editingId} updated.`, 'success');
+            } else {
+                const maxId = ad.finalizedPurchases.reduce((max, p) => Math.max(max, p.purchaseId), 0);
+                const newPurchase: FinalizedPurchase = { ...purchaseData, purchaseId: maxId + 1, date: new Date().toISOString() };
+                finalizedPurchases = [...ad.finalizedPurchases, newPurchase];
+                purchaseId = newPurchase.purchaseId;
+                addNotification(`Purchase #${purchaseId} recorded.`, 'success');
+            }
+
+            const newUserMedicineData = { ...ad.user_medicine_data };
+            purchaseData.items.forEach(item => {
+                const currentMedData = newUserMedicineData[item.medicineId];
+                const newMedData: UserMedicineData = { 
+                    ...currentMedData, 
+                    price: item.rate, 
+                    discount: item.discount, 
+                    batchNo: item.batchNo, 
+                    lastUpdated: new Date().toISOString(),
+                    saleDiscount: currentMedData?.saleDiscount ?? null,
+                };
+                newUserMedicineData[item.medicineId] = newMedData;
+            });
+            return { ...ad, finalizedPurchases, user_medicine_data: newUserMedicineData };
+        });
+    }, [updateAppData, addNotification]);
+
+    const deleteFinalizedPurchase = useCallback((purchaseId: number) => {
+        updateAppData(ad => ({ ...ad, finalizedPurchases: ad.finalizedPurchases.filter(p => p.purchaseId !== purchaseId) }));
         addNotification(`Purchase #${purchaseId} deleted.`, 'info');
-    }, [setFinalizedPurchases, addNotification]);
+    }, [updateAppData, addNotification]);
 
     const updateBillLayoutSettings = useCallback((newSettings: Partial<BillLayoutSettings>) => {
-        setBillLayoutSettings(prev => ({ ...prev, ...newSettings }));
-        addNotification("Bill layout settings updated.", "success");
-    }, [setBillLayoutSettings, addNotification]);
-
-    const updateSalesSettings = useCallback((newSettings: Partial<SalesSettings>) => {
-        setSalesSettings(prev => ({ ...prev, ...newSettings }));
-        addNotification("Sales settings updated.", "success");
-    }, [setSalesSettings, addNotification]);
-
-    // Data Management for Settings
-    const exportData = useCallback(() => ({
-        medicineDefinitions: globalMedicines,
-        userMedicineData,
-        medicalStores,
-        suppliers,
-        finalizedBills,
-        finalizedPurchases,
-        billLayoutSettings,
-        salesSettings
-    }), [globalMedicines, userMedicineData, medicalStores, suppliers, finalizedBills, finalizedPurchases, billLayoutSettings, salesSettings]);
-
-    const importData = (data: any) => {
-        if (data.medicineDefinitions) {
-            // Merge global definitions to avoid overwriting data from other users
-            setGlobalMedicines(currentGlobal => {
-                const newDefs = [...currentGlobal];
-                const existingIds = new Set(currentGlobal.map(d => d.id));
-                data.medicineDefinitions.forEach((def: MedicineDefinition) => {
-                    if (!existingIds.has(def.id)) {
-                        newDefs.push(def);
-                    }
-                });
-                return newDefs;
-            });
-        }
-        if (data.userMedicineData) setUserMedicineData(data.userMedicineData);
-        if (data.medicalStores) setMedicalStores(data.medicalStores);
-        if (data.finalizedBills) setFinalizedBills(data.finalizedBills);
-        if (data.suppliers) setSuppliers(data.suppliers);
-        if (data.finalizedPurchases) setFinalizedPurchases(data.finalizedPurchases);
-        if (data.billLayoutSettings) setBillLayoutSettings(data.billLayoutSettings);
-        if (data.salesSettings) setSalesSettings(data.salesSettings);
-    };
-
-    const clearAllData = (includeShared = false) => {
-        // Clear user-specific data
-        const userKeys = Object.keys(localStorage).filter(key => key.startsWith(currentUser));
-        userKeys.forEach(key => localStorage.removeItem(key));
-        
-        // Optionally clear shared data
-        if (includeShared) {
-            localStorage.removeItem('global_medicine_definitions');
-            localStorage.removeItem('global_appInitialized');
-        }
-
-        window.location.reload();
-    };
+        updateAppData(ad => ({ ...ad, billLayoutSettings: { ...ad.billLayoutSettings, ...newSettings }}));
+    }, [updateAppData]);
 
     const resetBillingSession = useCallback(() => {
         setCurrentBillingStoreID(null);
         setEditingBillNo(null);
         setCart([]);
-    }, [setCart, setCurrentBillingStoreID, setEditingBillNo]);
+    }, []);
 
     const startBillingForStore = useCallback((storeId: string) => {
         const store = medicalStores.find(s => s.id === storeId);
@@ -605,14 +300,14 @@ const AppProvider: React.FC<{
             setActiveView('create-bill');
             addNotification(`Billing started for ${store.name}.`, "success");
         }
-    }, [medicalStores, addNotification, cart.length, currentBillingStoreID, resetBillingSession, setCart, setCurrentBillingStoreID, setEditingBillNo, setActiveView]);
+    }, [medicalStores, addNotification, cart.length, currentBillingStoreID, resetBillingSession, setActiveView]);
 
     const resetPurchaseSession = useCallback(() => {
         setCurrentPurchaseSupplierID(null);
         setEditingPurchaseId(null);
         setPurchaseCart({});
         setPurchaseCartOrder([]);
-    }, [setCurrentPurchaseSupplierID, setEditingPurchaseId, setPurchaseCart, setPurchaseCartOrder]);
+    }, []);
 
     const startPurchaseForSupplier = useCallback((supplierId: string) => {
         const supplier = suppliers.find(s => s.id === supplierId);
@@ -626,7 +321,7 @@ const AppProvider: React.FC<{
             setActiveView('purchase-entry');
             addNotification(`Purchase entry started for ${supplier.name}.`, "success");
         }
-    }, [suppliers, addNotification, purchaseCartOrder.length, currentPurchaseSupplierID, resetPurchaseSession, setCurrentPurchaseSupplierID, setActiveView]);
+    }, [suppliers, addNotification, purchaseCartOrder.length, currentPurchaseSupplierID, resetPurchaseSession, setActiveView]);
     
     const startEditingPurchase = useCallback((purchase: FinalizedPurchase) => {
         if (purchaseCartOrder.length > 0 || currentPurchaseSupplierID) {
@@ -655,7 +350,31 @@ const AppProvider: React.FC<{
         setEditingPurchaseId(purchase.purchaseId);
         setActiveView('purchase-entry');
         addNotification(`Editing Purchase #${purchase.purchaseId}.`, 'info');
-    }, [addNotification, setActiveView, setPurchaseCart, setPurchaseCartOrder, setCurrentPurchaseSupplierID, setEditingPurchaseId, purchaseCartOrder, currentPurchaseSupplierID]);
+    }, [addNotification, setActiveView, purchaseCartOrder, currentPurchaseSupplierID]);
+    
+    const navigateToSection = useCallback((section: AppSection, element?: HTMLElement) => {
+        if (element) {
+            setTransitionElement(element);
+            element.classList.add('is-transitioning');
+
+            let targetView: AppView = 'welcome';
+            switch (section) {
+                case 'sales': case 'sales-only': targetView = 'manage-stores'; break;
+                case 'purchase': targetView = 'manage-suppliers'; break;
+                case 'reports': targetView = 'settings'; break;
+                default: targetView = 'welcome'; break;
+            }
+            setTransitionTargetView(targetView);
+        } else {
+            setActiveSection(section);
+             switch (section) {
+                case 'sales': case 'sales-only': setActiveView('manage-stores'); break;
+                case 'purchase': setActiveView('manage-suppliers'); break;
+                case 'reports': setActiveView('settings'); break;
+                default: setActiveView('welcome'); break;
+            }
+        }
+    }, []);
 
     const viewPurchaseHistoryForSupplier = useCallback((supplierId: string) => {
         const supplier = suppliers.find(s => s.id === supplierId);
@@ -664,7 +383,7 @@ const AppProvider: React.FC<{
             setActiveView('purchase-history');
             addNotification(`Viewing purchase history for ${supplier.name}.`, "info");
         }
-    }, [suppliers, addNotification, setCurrentViewingSupplierId, setActiveView]);
+    }, [suppliers, addNotification, setActiveView]);
 
     const viewBillsForStore = useCallback((storeId: string) => {
         const store = medicalStores.find(s => s.id === storeId);
@@ -673,57 +392,16 @@ const AppProvider: React.FC<{
             setActiveView('your-bills');
             addNotification(`Viewing bills for ${store.name}.`, "info");
         }
-    }, [medicalStores, addNotification, setBillFilterStoreID, setActiveView]);
+    }, [medicalStores, addNotification, setActiveView]);
     
     const clearBillFilter = useCallback(() => {
         setBillFilterStoreID(null);
         addNotification('Bill filter cleared.', 'info');
-    }, [setBillFilterStoreID, addNotification]);
-
-    // Auto-cancel purchase editing when navigating away
-    useEffect(() => {
-        if (editingPurchaseId && activeView !== 'purchase-entry') {
-            resetPurchaseSession();
-            addNotification('Purchase editing has been cancelled.', 'info');
-        }
-    }, [activeView, editingPurchaseId, resetPurchaseSession, addNotification]);
+    }, [addNotification]);
     
-    const handleContinueEditingBill = () => {
-        setActiveSection('sales');
-        setActiveView('create-bill');
-        setIsResumeBillModalOpen(false);
-    };
-
-    const handleStartNewBill = () => {
-        resetBillingSession();
-        addNotification("Unfinished bill discarded.", 'warning');
-        setActiveSection('sales');
-        setActiveView('manage-stores');
-        setIsResumeBillModalOpen(false);
-    };
-    
-    const handleContinueEditingPurchase = () => {
-        setActiveSection('purchase');
-        setActiveView('purchase-entry');
-        setIsResumePurchaseModalOpen(false);
-    };
-
-    const handleStartNewPurchase = () => {
-        resetPurchaseSession();
-        addNotification("Unfinished purchase discarded.", 'warning');
-        setActiveSection('purchase');
-        setActiveView('manage-suppliers');
-        setIsResumePurchaseModalOpen(false);
-    };
-
-    const value = useMemo(() => ({
+    const value: AppContextType = {
         medicines, medicalStores, finalizedBills, suppliers, finalizedPurchases, billLayoutSettings, salesSettings,
-        addMedicine, updateMedicine, deleteMedicine,
-        addMedicalStore, updateMedicalStore, deleteMedicalStore,
-        addSupplier, updateSupplier, deleteSupplier,
-        finalizeBill, deleteFinalizedBill, postPurchase, deleteFinalizedPurchase,
-        updateBillLayoutSettings, updateSalesSettings,
-        importData, clearAllData, exportData,
+        updateAppData,
         cart, setCart,
         purchaseCart, setPurchaseCart,
         purchaseCartOrder, setPurchaseCartOrder,
@@ -742,49 +420,33 @@ const AppProvider: React.FC<{
         viewPurchaseHistoryForSupplier, viewBillsForStore, clearBillFilter,
         transitionElement,
         focusedMed, setFocusedMed, hoveredMed, setHoveredMed,
-        isCalculatorOpen, setIsCalculatorOpen
-    }), [
-        medicines, medicalStores, finalizedBills, suppliers, finalizedPurchases,
-        cart, purchaseCart, purchaseCartOrder, currentBillingStoreID, currentPurchaseSupplierID,
-        currentViewingSupplierId, editingBillNo, editingPurchaseId, activeView, activeSection, billFilterStoreID,
-        transitionElement,
-        focusedMed, hoveredMed, isCalculatorOpen, billLayoutSettings, salesSettings,
-        addNotification, addMedicine, updateMedicine, deleteMedicine, addMedicalStore,
-        updateMedicalStore, deleteMedicalStore, addSupplier, updateSupplier, deleteSupplier,
-        finalizeBill, deleteFinalizedBill, postPurchase, deleteFinalizedPurchase, updateBillLayoutSettings, updateSalesSettings,
-        importData, clearAllData, exportData, navigateToSection, startBillingForStore, resetBillingSession,
-        startPurchaseForSupplier, resetPurchaseSession, startEditingPurchase,
-        viewPurchaseHistoryForSupplier, viewBillsForStore, clearBillFilter,
-        setCart, setPurchaseCart, setPurchaseCartOrder, setCurrentBillingStoreID,
-        setCurrentPurchaseSupplierID, setCurrentViewingSupplierId, setEditingBillNo,
-        setEditingPurchaseId, setBillFilterStoreID, setActiveView, setActiveSection,
-        setFocusedMed, setHoveredMed, setIsCalculatorOpen
-    ]);
+        isCalculatorOpen, setIsCalculatorOpen,
+        addMedicalStore, updateMedicalStore, deleteMedicalStore,
+        addMedicine, updateMedicine, deleteMedicine,
+        finalizeBill, deleteFinalizedBill,
+        addSupplier, updateSupplier, deleteSupplier,
+        postPurchase, deleteFinalizedPurchase,
+        updateBillLayoutSettings,
+        downloadBackup: () => {}, // Provided by App component
+        importData: () => {}, // Provided by App component
+        clearAllData: () => {}, // Provided by App component
+        logout: () => {}, // Provided by App component
+        initiateImport: () => {}, // Provided by App component
+    };
 
     return (
-        <AppContext.Provider value={value}>
+        <AppContext.Provider value={{...value, ...useContext(AppContext)}}>
             <div className="flex flex-col h-screen bg-slate-900">
-                <Header onLogout={onLogout} isAnimatingIn={isAnimatingIn} />
+                <Header isAnimatingIn={isLoggedIn} />
                 <div className="flex-1 overflow-y-auto custom-scrollbar">
-                    <MainContent isAnimatingIn={isAnimatingIn} />
+                    <MainContent isAnimatingIn={isLoggedIn} />
                 </div>
             </div>
-             <ResumeBillModal
-                isOpen={isResumeBillModalOpen}
-                onContinue={handleContinueEditingBill}
-                onStartNew={handleStartNewBill}
-                onClose={() => setIsResumeBillModalOpen(false)}
-            />
-            <ResumePurchaseModal
-                isOpen={isResumePurchaseModalOpen}
-                onContinue={handleContinueEditingPurchase}
-                onStartNew={handleStartNewPurchase}
-                onClose={() => setIsResumePurchaseModalOpen(false)}
-            />
             <Calculator 
                 isOpen={isCalculatorOpen}
                 onClose={() => setIsCalculatorOpen(false)}
             />
+             <CapsLockModal isOpen={showCapsLockModal} onDismiss={() => {}} />
              {transitionElement && transitionTargetView && (
                 <SectionTransition
                     element={transitionElement}
@@ -804,78 +466,33 @@ const Notification: React.FC<NotificationState & { onClose: () => void, onExited
     }, [message]);
 
     const config = useMemo(() => ({
-        success: {
-            icon: (
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-6 h-6">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5"></path>
-                </svg>
-            ),
-            color: 'text-emerald-500'
-        },
-        error: {
-            icon: (
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-6 h-6">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-            ),
-            color: 'text-red-500'
-        },
-        warning: {
-            icon: (
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-6 h-6">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                </svg>
-            ),
-            color: 'text-amber-500'
-        },
-        info: {
-            icon: (
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-6 h-6">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-            ),
-            color: 'text-violet-400'
-        }
+        success: { icon: 'check_circle', color: 'text-emerald-400' },
+        error: { icon: 'error', color: 'text-red-500' },
+        warning: { icon: 'warning', color: 'text-amber-500' },
+        info: { icon: 'info', color: 'text-violet-400' }
     }), []);
 
     const handleAnimationEnd = () => {
-        if (isExiting) {
-            onExited();
-        }
+        if (isExiting) onExited();
     };
 
     return (
-        <div
-            onAnimationEnd={handleAnimationEnd}
-            className={`cursor-default flex items-start justify-between w-full min-h-12 sm:min-h-14 rounded-lg bg-[#232531] px-[10px] py-2 sm:py-3 ${isExiting ? 'animate-notification-out' : 'animate-notification-in'}`}
-        >
-            <div className="flex gap-2 items-start min-w-0">
-                <div className={`${config[type].color} bg-white/5 backdrop-blur-xl p-1 rounded-lg flex-shrink-0`}>
-                    {config[type].icon}
-                </div>
-                <div className="min-w-0">
-                    <p className="text-white font-medium">{title}</p>
-                    {description && <p className="text-gray-500">{description}</p>}
-                </div>
+        <div onAnimationEnd={handleAnimationEnd} className={`flex items-start w-full max-w-sm p-4 rounded-lg bg-slate-800 shadow-2xl ring-1 ring-slate-700 ${isExiting ? 'animate-notification-out' : 'animate-notification-in'}`}>
+            <div className={`mr-3 text-2xl ${config[type].color}`}><Icon name={config[type].icon} /></div>
+            <div className="flex-1">
+                <p className="font-bold text-slate-100">{title}</p>
+                {description && <p className="text-sm text-slate-300 mt-1">{description}</p>}
             </div>
-            <button
-                onClick={onClose}
-                className="text-gray-600 hover:bg-white/5 p-1 rounded-md transition-colors ease-linear flex-shrink-0"
-                aria-label="Close notification"
-            >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-6 h-6">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12"></path>
-                </svg>
-            </button>
+            <button onClick={onClose} className="ml-3 text-slate-400 hover:text-white"><Icon name="close" /></button>
         </div>
     );
 };
 
-const Header: React.FC<{ onLogout: () => void; isAnimatingIn: boolean; }> = ({ onLogout, isAnimatingIn }) => {
+const Header: React.FC<{ isAnimatingIn: boolean; }> = ({ isAnimatingIn }) => {
   const { 
       activeView, setActiveView, activeSection, navigateToSection, 
-      focusedMed, hoveredMed, setIsCalculatorOpen, salesSettings, updateSalesSettings,
-      billLayoutSettings, updateBillLayoutSettings
+      focusedMed, hoveredMed, setIsCalculatorOpen, salesSettings, billLayoutSettings,
+      updateAppData, addNotification, updateBillLayoutSettings, downloadBackup, logout
   } = useAppContext();
   const [isMobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number; }>({ visible: false, x: 0, y: 0 });
@@ -883,6 +500,15 @@ const Header: React.FC<{ onLogout: () => void; isAnimatingIn: boolean; }> = ({ o
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const settingsMenuTimeoutRef = useRef<number | null>(null);
 
+  const _updateBillLayoutSettings = useCallback((newSettings: Partial<BillLayoutSettings>) => {
+        updateBillLayoutSettings(newSettings);
+        addNotification("Bill layout settings updated.", "success");
+    }, [updateBillLayoutSettings, addNotification]);
+
+    const updateSalesSettings = useCallback((newSettings: Partial<SalesSettings>) => {
+        updateAppData(ad => ({ ...ad, salesSettings: { ...ad.salesSettings, ...newSettings }}));
+        addNotification("Sales settings updated.", "success");
+    }, [updateAppData, addNotification]);
 
   const activeItemDiscount = useMemo(() => {
     if (activeView !== 'create-bill') return null;
@@ -951,9 +577,9 @@ const Header: React.FC<{ onLogout: () => void; isAnimatingIn: boolean; }> = ({ o
       }
       closeContextMenu();
   };
-
+  
   const handleLogoutClick = () => {
-      onLogout();
+      logout();
       closeContextMenu();
   }
 
@@ -1102,8 +728,8 @@ const Header: React.FC<{ onLogout: () => void; isAnimatingIn: boolean; }> = ({ o
             >
                 <ul className="space-y-1">
                     <li onClick={handleLogoutClick} className="flex items-center gap-3 px-3 py-1.5 text-slate-200 hover:bg-red-500 hover:text-white rounded-md cursor-pointer transition-colors">
-                         <Icon name="logout" className="w-4 text-center" />
-                         <span>Logout</span>
+                        <Icon name="logout" className="w-4 text-center" />
+                        <span>Logout</span>
                     </li>
                     <li onClick={handleCalculatorClick} className="flex items-center gap-3 px-3 py-1.5 text-slate-200 hover:bg-violet-600 hover:text-white rounded-md cursor-pointer transition-colors">
                         <Icon name="calculate" className="w-4 text-center" />
@@ -1117,7 +743,7 @@ const Header: React.FC<{ onLogout: () => void; isAnimatingIn: boolean; }> = ({ o
                             </>
                         ) : (
                             <>
-                                <Icon name="adjust" className="w-4 text-center" />
+                                <Icon name="sensors" className="w-4 text-center" />
                                 <span>Sales Focus Mode</span>
                             </>
                         )}
@@ -1142,15 +768,6 @@ const Header: React.FC<{ onLogout: () => void; isAnimatingIn: boolean; }> = ({ o
                             >
                                 <h4 className="font-bold text-violet-300 mb-4 text-base">Sales Settings</h4>
                                 <div className="space-y-5 text-sm">
-                                    <div className="px-1">
-                                        <Input
-                                            label="Company Phone Number"
-                                            value={billLayoutSettings.phoneNumber}
-                                            onChange={(e) => updateBillLayoutSettings({ phoneNumber: e.target.value })}
-                                            className="!p-1.5 !h-8 text-sm w-full"
-                                            placeholder="Enter phone number"
-                                        />
-                                    </div>
                                      <ToggleSwitch
                                         label="Show Sales Tax Column"
                                         checked={salesSettings.showSalesTaxColumn}
@@ -1198,28 +815,6 @@ const GlobalKeyboardShortcuts = () => {
     return null;
 };
 
-const AuthenticatedApp: React.FC<{ 
-    currentUser: string; 
-    onLogout: () => void; 
-    isAnimatingIn: boolean; 
-    addNotification: (message: string, type?: NotificationType) => void; 
-    activeView: AppView;
-    setActiveView: React.Dispatch<React.SetStateAction<AppView>>;
-    activeSection: AppSection;
-    setActiveSection: React.Dispatch<React.SetStateAction<AppSection>>;
-    navigateToSection: (section: AppSection, element?: HTMLElement) => void;
-    transitionElement: HTMLElement | null;
-    transitionTargetView: AppView | null;
-    handleTransitionEnd: () => void;
-    renderViewComponent: (view: AppView) => React.ReactNode;
-}> = (props) => {
-    return (
-        <AppProvider {...props}>
-            <GlobalKeyboardShortcuts />
-        </AppProvider>
-    );
-};
-
 const SectionTransition: React.FC<{
     element: HTMLElement;
     onAnimationEnd: () => void;
@@ -1241,16 +836,12 @@ const SectionTransition: React.FC<{
         const screenW = window.innerWidth;
         const contentAreaHeight = window.innerHeight - headerHeight;
         
-        // Calculate scale factors
         const scaleX = firstRect.width / screenW;
         const scaleY = firstRect.height / contentAreaHeight;
         
-        // Calculate translation
-        // Center of the card relative to the viewport
         const cardCenterX_viewport = firstRect.left + firstRect.width / 2;
         const cardCenterY_viewport = firstRect.top + firstRect.height / 2;
         
-        // Center of the overlay relative to the viewport
         const overlayCenterX_viewport = screenW / 2;
         const overlayCenterY_viewport = headerHeight + (contentAreaHeight / 2);
 
@@ -1291,16 +882,135 @@ const SectionTransition: React.FC<{
     );
 };
 
+const USERS_LIST_KEY = 'mughal_os_users_list';
+const LAST_USER_KEY = 'mughal_os_last_user';
+const getUserDataKey = (username: string) => `mughal_os_data_${username.toLowerCase()}`;
+
+const getInitialAppData = (): AppData => {
+    const initialGlobalDefs: MedicineDefinition[] = INITIAL_MEDICINES_DATA.map(med => ({
+        id: crypto.randomUUID(),
+        name: med.name,
+        company: med.company,
+        type: med.type,
+        tags: med.name.toLowerCase().split(/\s+/).filter(Boolean),
+    }));
+
+    const initialUserMedicineData: Record<string, UserMedicineData> = {};
+    initialGlobalDefs.forEach((def, index) => {
+        const initialMed = INITIAL_MEDICINES_DATA[index];
+        initialUserMedicineData[def.id] = {
+            price: null,
+            discount: initialMed.discount,
+            saleDiscount: initialMed.saleDiscount,
+            batchNo: '',
+            lastUpdated: new Date(0).toISOString(),
+        };
+    });
+
+    return {
+        version: '1.0.0',
+        global_medicine_definitions: initialGlobalDefs,
+        user_medicine_data: initialUserMedicineData,
+        medicalStores: [],
+        finalizedBills: [],
+        suppliers: [],
+        finalizedPurchases: [],
+        billLayoutSettings: {
+            distributorName: 'Mughal Distributors',
+            distributorTitle: 'ESTIMATE',
+            distributorAddressLine1: 'Bismillah Plaza, Opp. Sonari Bank',
+            distributorAddressLine2: 'Chinioat Bazar, Faisalabad',
+            footerText: '',
+            showPhoneNumber: true,
+            showBillDate: true,
+            phoneNumber: '03040297400'
+        },
+        salesSettings: { showSalesTaxColumn: false, showBatchNo: false },
+        cart: [],
+        purchaseCart: {},
+        purchaseCartOrder: [],
+        currentBillingStoreID: null,
+        currentPurchaseSupplierID: null,
+        currentViewingSupplierId: null,
+        editingBillNo: null,
+        editingPurchaseId: null,
+        billFilterStoreID: null,
+    };
+};
+
+
 export default function App() {
-    const [currentUser, setCurrentUser] = useLocalStorage<string | null>('currentUser', null);
-    const [uiState, setUiState] = useState<'auth' | 'transitioning' | 'app'>(currentUser ? 'app' : 'auth');
+    const [appData, setAppData] = useState<AppData | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
     const [notifications, setNotifications] = useState<NotificationState[]>([]);
     
-    const [activeSection, setActiveSection] = useLocalStorage<AppSection>('activeSection', 'welcome', currentUser || 'global');
-    const [activeView, setActiveView] = useLocalStorage<AppView>('activeView', 'welcome', currentUser || 'global');
+    const [users, setUsers] = useState<User[]>([]);
+    const [currentUser, setCurrentUser] = useState<string | null>(null);
+    const [authExiting, setAuthExiting] = useState(false);
+    const [postLoginLoading, setPostLoginLoading] = useState(false);
+
+    const [importFileContent, setImportFileContent] = useState<string | null>(null);
+    const [isGlobalDragging, setIsGlobalDragging] = useState(false);
     
-    const [transitionElement, setTransitionElement] = useState<HTMLElement | null>(null);
-    const [transitionTargetView, setTransitionTargetView] = useState<AppView | null>(null);
+    // Load users list on initial render
+    useEffect(() => {
+        try {
+            const savedUsers = localStorage.getItem(USERS_LIST_KEY);
+            if (savedUsers) {
+                setUsers(JSON.parse(savedUsers));
+            }
+        } catch (error) {
+            console.error("Failed to load users list from local storage:", error);
+        } finally {
+            setIsLoading(false);
+        }
+    }, []);
+
+    // Load user-specific data when currentUser changes
+    useEffect(() => {
+        if (currentUser) {
+            setIsLoading(true);
+            try {
+                const userKey = getUserDataKey(currentUser);
+                const savedData = localStorage.getItem(userKey);
+                if (savedData) {
+                    setAppData(JSON.parse(savedData));
+                } else {
+                    // This case handles a newly signed-up user
+                    setAppData(getInitialAppData());
+                }
+            } catch (error) {
+                console.error(`Failed to load data for user ${currentUser}:`, error);
+                setAppData(getInitialAppData()); // Load fresh data on error
+            } finally {
+                setIsLoading(false);
+            }
+        } else {
+            setAppData(null); // Clear data on logout
+        }
+    }, [currentUser]);
+
+    // Auto-save user-specific data to localStorage
+    useEffect(() => {
+        if (appData && !isLoading && currentUser) {
+            try {
+                localStorage.setItem(getUserDataKey(currentUser), JSON.stringify(appData));
+            } catch (error) {
+                console.error("Failed to save user data to local storage:", error);
+            }
+        }
+    }, [appData, isLoading, currentUser]);
+
+    // Auto-save users list to localStorage
+    useEffect(() => {
+        if (!isLoading) {
+            try {
+                localStorage.setItem(USERS_LIST_KEY, JSON.stringify(users));
+            } catch (error) {
+                console.error("Failed to save users list to local storage:", error);
+            }
+        }
+    }, [users, isLoading]);
 
     const startExitAnimation = useCallback((id: number) => {
         setNotifications(current =>
@@ -1320,113 +1030,247 @@ export default function App() {
         }, 5000);
     }, [startExitAnimation]);
 
-    const handleLoginSuccess = (username: string) => {
-        setCurrentUser(username);
-        setUiState('transitioning');
-        setTimeout(() => {
-            setUiState('app');
-        }, 700);
+    const downloadBackup = useCallback(() => {
+        if (!appData || !currentUser) {
+            addNotification("No data to create a backup from.", "warning");
+            return;
+        }
+        addNotification("Preparing your backup file...", "info");
+        try {
+            // Create a clean version for export, removing transient state
+            const cleanData: AppData = {
+                ...appData,
+                cart: [],
+                purchaseCart: {},
+                purchaseCartOrder: [],
+                currentBillingStoreID: null,
+                currentPurchaseSupplierID: null,
+                currentViewingSupplierId: null,
+                editingBillNo: null,
+                editingPurchaseId: null,
+                billFilterStoreID: null
+            };
+            
+            const blob = new Blob([JSON.stringify(cleanData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `mughal_os_backup_${currentUser}_${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            addNotification("Backup data file saved successfully.", "success");
+        } catch (error) {
+            console.error("Backup failed:", error);
+            addNotification("Failed to create backup file.", "error");
+        }
+    }, [appData, addNotification, currentUser]);
+    
+    const importData = useCallback((jsonData: string) => {
+        if (!currentUser) {
+            addNotification("No user is logged in to import data for.", "error");
+            return;
+        }
+        try {
+            let importedData = JSON.parse(jsonData);
+            const defaults = getInitialAppData();
+
+            // --- Migration/Compatibility Layer for older backup formats ---
+            if (importedData.medicineDefinitions && !importedData.global_medicine_definitions) {
+                importedData.global_medicine_definitions = importedData.medicineDefinitions;
+                delete importedData.medicineDefinitions;
+            }
+            if (importedData.userMedicineData && !importedData.user_medicine_data) {
+                importedData.user_medicine_data = importedData.userMedicineData;
+                delete importedData.userMedicineData;
+            }
+
+            // Ensure all top-level keys exist and merge nested settings objects
+            const finalData = {
+                ...defaults,
+                ...importedData,
+                billLayoutSettings: {
+                    ...defaults.billLayoutSettings,
+                    ...(importedData.billLayoutSettings || {})
+                },
+                salesSettings: {
+                    ...defaults.salesSettings,
+                    ...(importedData.salesSettings || {})
+                }
+            };
+
+            // --- Final Validation ---
+            if (
+                !Array.isArray(finalData.global_medicine_definitions) ||
+                !Array.isArray(finalData.medicalStores) ||
+                !Array.isArray(finalData.finalizedBills) ||
+                !Array.isArray(finalData.suppliers)
+            ) {
+                throw new Error("Invalid file format after migration attempt.");
+            }
+
+            localStorage.setItem(getUserDataKey(currentUser), JSON.stringify(finalData));
+            addNotification("Data imported successfully! The application will now reload.", "success");
+            setTimeout(() => window.location.reload(), 1500);
+        } catch (error) {
+            console.error("Import failed:", error);
+            addNotification("Failed to import data. The file may be corrupted or in the wrong format.", "error");
+        }
+    }, [currentUser, addNotification]);
+    
+    const initiateImport = useCallback((file: File | null | undefined) => {
+        if (file && (file.type === 'application/json' || file.name.endsWith('.json'))) {
+            addNotification("Reading backup file...", "info");
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const content = event.target?.result as string;
+                    // Pre-validate JSON before showing confirmation modal
+                    JSON.parse(content); 
+                    setImportFileContent(content);
+                } catch (e) {
+                    addNotification("Import failed: Invalid or corrupted JSON file.", "error");
+                    setImportFileContent(null);
+                }
+            };
+            reader.onerror = () => {
+                addNotification("Failed to read the selected file.", "error");
+            };
+            reader.readAsText(file);
+        } else if (file) {
+            addNotification("Invalid file type. Please provide a .json backup file.", "warning");
+        }
+    }, [addNotification]);
+
+    // --- Global Drag & Drop Handler ---
+    useEffect(() => {
+        const preventDefaults = (e: Event) => {
+            e.preventDefault();
+            e.stopPropagation();
+        };
+
+        const handleDragEnter = (e: DragEvent) => {
+            preventDefaults(e);
+            if (e.dataTransfer?.items && e.dataTransfer.items.length > 0) {
+                setIsGlobalDragging(true);
+            }
+        };
+
+        const handleDragLeave = (e: DragEvent) => {
+            preventDefaults(e);
+            const relatedTarget = e.relatedTarget as Node;
+            if (!relatedTarget || (relatedTarget.nodeName === "HTML")) {
+                setIsGlobalDragging(false);
+            }
+        };
+
+        const handleDrop = (e: DragEvent) => {
+            preventDefaults(e);
+            setIsGlobalDragging(false);
+            if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+                initiateImport(e.dataTransfer.files[0]);
+            }
+        };
+
+        window.addEventListener('dragenter', handleDragEnter, false);
+        window.addEventListener('dragleave', handleDragLeave, false);
+        window.addEventListener('dragover', preventDefaults, false);
+        window.addEventListener('drop', handleDrop, false);
+
+        return () => {
+            window.removeEventListener('dragenter', handleDragEnter, false);
+            window.removeEventListener('dragleave', handleDragLeave, false);
+            window.removeEventListener('dragover', preventDefaults, false);
+            window.removeEventListener('drop', handleDrop, false);
+        };
+    }, [initiateImport]);
+
+    const handleConfirmImport = () => {
+        if (importFileContent) {
+            importData(importFileContent);
+        }
+        setImportFileContent(null);
     };
 
+    const clearAllData = useCallback(() => {
+        if (!currentUser) return;
+        
+        localStorage.removeItem(getUserDataKey(currentUser));
+        addNotification(`Data for user "${currentUser}" cleared. Reloading application.`, "success");
+        setTimeout(() => window.location.reload(), 1500);
+
+    }, [currentUser]);
+
+    const handleLoginSuccess = (username: string) => {
+        setAuthExiting(true);
+        localStorage.setItem(LAST_USER_KEY, username);
+        // After auth screen animates out (600ms)...
+        setTimeout(() => {
+            // Show the loader immediately
+            setPostLoginLoading(true);
+            // Set the current user to trigger background data loading
+            setCurrentUser(username);
+
+            // After 5 seconds, hide the loader to reveal the app
+            setTimeout(() => {
+                setPostLoginLoading(false);
+            }, 5000); // 5-second delay as requested
+        }, 600);
+    };
+    
     const handleLogout = () => {
         setCurrentUser(null);
-        setActiveSection('welcome');
-        setActiveView('welcome');
-        setUiState('auth');
-    };
-    
-    const navigateToSection = useCallback((section: AppSection, element?: HTMLElement) => {
-        if (element) {
-            setTransitionElement(element);
-            element.classList.add('is-transitioning');
-
-            let targetView: AppView = 'welcome';
-            switch (section) {
-                case 'sales': case 'sales-only': targetView = 'manage-stores'; break;
-                case 'purchase': targetView = 'manage-suppliers'; break;
-                case 'reports': targetView = 'settings'; break;
-                default: targetView = 'welcome'; break;
-            }
-            setTransitionTargetView(targetView);
-        } else {
-            setActiveSection(section);
-             switch (section) {
-                case 'sales': case 'sales-only': setActiveView('manage-stores'); break;
-                case 'purchase': setActiveView('manage-suppliers'); break;
-                case 'reports': setActiveView('settings'); break;
-                default: setActiveView('welcome'); break;
-            }
-        }
-    }, [setActiveSection, setActiveView]);
-
-    const handleTransitionEnd = () => {
-        if (transitionTargetView) {
-            const sectionMapView: Record<AppSection, AppView[]> = {
-                'welcome': ['welcome'],
-                'sales': ['manage-stores', 'create-bill', 'your-bills'],
-                'sales-only': ['manage-stores', 'create-bill', 'your-bills'],
-                'purchase': ['manage-suppliers', 'purchase-entry', 'purchase-history', 'inventory', 'your-purchases'],
-                'reports': ['settings', 'profit-report', 'discount-sheet']
-            };
-            const newSection = (Object.keys(sectionMapView) as AppSection[]).find(sec => 
-                sectionMapView[sec].includes(transitionTargetView)
-            ) || 'welcome';
-            
-            setActiveSection(newSection);
-            setActiveView(transitionTargetView);
-        }
-        if (transitionElement) {
-            transitionElement.classList.remove('is-transitioning');
-        }
-        setTransitionElement(null);
-        setTransitionTargetView(null);
-    };
-    
-    const renderViewComponent = (view: AppView): React.ReactNode => {
-        switch (view) {
-            case 'manage-stores': return <ManageStores />;
-            case 'create-bill': return <CreateBill />;
-            case 'your-bills': return <YourBills />;
-            case 'inventory': return <Inventory />;
-            case 'settings': return <Settings />;
-            case 'manage-suppliers': return <ManageSuppliers />;
-            case 'purchase-entry': return <Purchase />;
-            case 'purchase-history': return <PurchaseHistory />;
-            case 'your-purchases': return <YourPurchases />;
-            case 'discount-sheet': return <DiscountSheet />;
-            case 'profit-report': return <ProfitReport />;
-            default: return null;
-        }
+        setAuthExiting(false);
     };
 
-    const showAuth = uiState === 'auth' || uiState === 'transitioning';
-    const showApp = uiState === 'app' || uiState === 'transitioning';
-    const isAnimatingIn = uiState === 'transitioning';
+    const handleSignUp = (newUser: Omit<User, 'id'>): boolean => {
+        const usernameExists = users.some(u => u.username.toLowerCase() === newUser.username.toLowerCase());
+        if (usernameExists) {
+            return false;
+        }
+        const userWithId: User = { ...newUser, id: crypto.randomUUID() };
+        setUsers(prev => [...prev, userWithId]);
+        // The useEffect for data loading will handle creating initial data
+        return true;
+    };
+
+    const isLoggedIn = !!currentUser;
 
     return (
         <>
-            {showAuth && (
-                <div className={`auth-container ${uiState === 'transitioning' ? 'animate-auth-exit' : ''}`}>
-                    <Auth onLoginSuccess={handleLoginSuccess} addNotification={addNotification} />
+            {postLoginLoading && <LoginLoader />}
+
+            {/* The main application is always rendered in the background to preload components, but remains invisible until login. */}
+            <div style={{ visibility: isLoggedIn && !postLoginLoading ? 'visible' : 'hidden' }}>
+                { (isLoading || !appData) && isLoggedIn ? (
+                    <div className="fixed inset-0 flex items-center justify-center bg-slate-900"><p>Loading App Data...</p></div>
+                ) : appData ? (
+                    <AppContext.Provider value={{ downloadBackup, importData, initiateImport, clearAllData, logout: handleLogout } as any}>
+                         <AppProvider
+                            appData={appData}
+                            updateAppData={setAppData as (updater: (currentData: AppData) => AppData) => void}
+                            addNotification={addNotification}
+                            isLoggedIn={isLoggedIn}
+                        >
+                            <GlobalKeyboardShortcuts />
+                        </AppProvider>
+                    </AppContext.Provider>
+                ) : null }
+            </div>
+
+            {/* The authentication screen is only rendered when not logged in. */}
+            {!isLoggedIn && (
+                <div className={`auth-container ${authExiting ? 'animate-auth-exit' : ''}`}>
+                    <Auth 
+                        addNotification={addNotification} 
+                        onLoginSuccess={handleLoginSuccess}
+                        onSignUp={handleSignUp}
+                        users={users}
+                    />
                 </div>
             )}
-            {showApp && currentUser && (
-                <AuthenticatedApp 
-                    currentUser={currentUser} 
-                    onLogout={handleLogout} 
-                    isAnimatingIn={isAnimatingIn}
-                    addNotification={addNotification}
-                    activeSection={activeSection}
-                    setActiveSection={setActiveSection}
-                    activeView={activeView}
-                    setActiveView={setActiveView}
-                    navigateToSection={navigateToSection}
-                    transitionElement={transitionElement}
-                    transitionTargetView={transitionTargetView}
-                    handleTransitionEnd={handleTransitionEnd}
-                    renderViewComponent={renderViewComponent}
-                />
-            )}
+            
             <div className="fixed bottom-6 right-6 z-[201] flex flex-col gap-2 w-60 sm:w-72 text-xs sm:text-sm">
                 {notifications.map(n => 
                     <Notification 
@@ -1437,6 +1281,33 @@ export default function App() {
                     />
                 )}
             </div>
+
+            <Modal isOpen={!!importFileContent} onClose={() => setImportFileContent(null)} title="Confirm Data Import">
+                <div className="text-center">
+                    <Icon name="warning" className="text-5xl text-amber-400 mx-auto mb-4" />
+                    <h3 className="text-xl font-bold text-slate-100">Overwrite Existing Data?</h3>
+                    <p className="text-slate-300 mt-2">
+                        Importing this file will completely replace all of your current data, including bills, stores, suppliers, and inventory settings. 
+                        This action cannot be undone.
+                    </p>
+                    <p className="text-slate-300 mt-4">
+                        Are you sure you want to proceed?
+                    </p>
+                </div>
+                <div className="flex justify-center gap-4 mt-8">
+                    <Button variant="secondary" onClick={() => setImportFileContent(null)} className="w-32">Cancel</Button>
+                    <Button variant="danger" onClick={handleConfirmImport} className="w-48" autoFocus>Yes, Import and Overwrite</Button>
+                </div>
+            </Modal>
+            
+            {isGlobalDragging && (
+                <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[999] flex items-center justify-center pointer-events-none rounded-lg">
+                    <div className="border-4 border-dashed border-violet-500 rounded-2xl p-16 text-center">
+                        <Icon name="upload_file" className="text-6xl text-violet-400 mb-4" />
+                        <p className="text-xl font-bold text-slate-200">Drop backup file to import</p>
+                    </div>
+                </div>
+            )}
         </>
     );
 }

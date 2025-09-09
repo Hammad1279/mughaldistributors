@@ -5,7 +5,6 @@ import { Card, Button, Icon, SearchInput } from './ui';
 import { BillTemplate } from './BillTemplate';
 
 declare var Fuse: any;
-declare var html2pdf: any;
 
 export default function YourBills() {
     const { 
@@ -33,27 +32,16 @@ export default function YourBills() {
         return fuse.search(searchTerm.trim().replace('#', '')).map((result: any) => result.item);
     }, [searchTerm, finalizedBills, billFilterStoreID]);
 
-    const handlePreview = (bill: FinalizedBill) => {
+    const handleDownload = (bill: FinalizedBill) => {
         const billHTML = BillTemplate(bill, billLayoutSettings);
         const newWindow = window.open('', '_blank');
         if (newWindow) {
             newWindow.document.write(billHTML);
             newWindow.document.close();
+            addNotification(`Preview for Bill #${bill.billNo} opened. You can print or save from there.`, 'info');
+        } else {
+            addNotification('Could not open preview. Please check your pop-up blocker.', 'warning');
         }
-    };
-
-    const handleDownload = (bill: FinalizedBill) => {
-        const billHTML = BillTemplate(bill, billLayoutSettings);
-        const element = document.createElement('div');
-        element.innerHTML = billHTML;
-        html2pdf().from(element).set({
-            margin: 0.2,
-            filename: `Bill_${bill.billNo}_${bill.storeName.replace(/\s/g, '_')}.pdf`,
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 2, useCORS: true },
-            jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
-        }).save();
-        addNotification(`Bill #${bill.billNo} PDF downloaded.`, 'success');
     };
 
     const handleEdit = (bill: FinalizedBill) => {
@@ -112,7 +100,6 @@ export default function YourBills() {
                             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-t border-slate-700 pt-3 mt-3 gap-4">
                                 <p className="text-xl font-bold text-slate-100">Total: Rs {bill.grandTotal.toFixed(2)}</p>
                                 <div className="flex space-x-2">
-                                    <Button onClick={() => handlePreview(bill)} variant="secondary" className="px-3 py-1.5 text-xs" icon="visibility">Preview</Button>
                                     <Button onClick={() => handleDownload(bill)} variant="success" className="px-3 py-1.5 text-xs" icon="download">Download</Button>
                                     <Button onClick={() => handleEdit(bill)} variant="warning" className="px-3 py-1.5 text-xs" icon="edit">Edit</Button>
                                     {confirmDeleteId === bill.billNo ? (
@@ -143,7 +130,7 @@ export default function YourBills() {
                     <Card className="text-center p-12 text-slate-400 border-2 border-dashed border-slate-700">
                         {searchTerm ? (
                             <>
-                                <Icon name="search_off" className="text-4xl mb-3" />
+                                <Icon name="search_off" className="text-4xl mb-3"/>
                                 <h3 className="text-xl font-semibold text-slate-300">No Bills Found</h3>
                                 <p>Your search for "{searchTerm}" didn't return any results.</p>
                             </>

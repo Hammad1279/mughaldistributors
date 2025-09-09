@@ -1,10 +1,16 @@
 import React from 'react';
 
 // --- ICONS ---
-// Using Google's Material Symbols, loaded via CDN in index.html
-export const Icon: React.FC<{ name: string; className?: string }> = ({ name, className = '' }) => (
-  <span className={`material-symbols-outlined ${className}`}>{name}</span>
-);
+// Using Google's Material Symbols and Font Awesome, loaded via CDN in index.html
+export const Icon: React.FC<{ name: string; className?: string }> = ({ name, className = '' }) => {
+  if (name.startsWith('fa-')) {
+    // For Font Awesome icons, e.g., "fa-solid fa-pencil"
+    return <i className={`fa-solid ${name} ${className}`}></i>;
+  }
+  // For Google Material Symbols
+  return <span className={`material-symbols-outlined ${className}`}>{name}</span>;
+};
+
 
 // --- CARD ---
 interface CardProps {
