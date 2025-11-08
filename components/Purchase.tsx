@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useAppContext } from '../App';
 import { Medicine, FinalizedPurchase, PurchaseItem as FinalizedPurchaseItem, PurchaseRowData } from '../types';
@@ -362,10 +363,11 @@ export default function Purchase() {
     const handlePostPurchase = useCallback(async () => {
         if (!activeSupplier) { addNotification("No supplier selected.", "error"); return; }
 
+        // FIX: Add explicit types to filter/map callbacks to resolve TS errors where `data` was `unknown`.
+        // Also removed a redundant .map() call for efficiency.
         const itemsForPurchase: FinalizedPurchaseItem[] = Object.entries(purchaseCart)
-            .map(([medId, data]) => ({ medId, data }))
-            .filter(({ data }) => data.quantity > 0 && data.rate > 0)
-            .map(({medId, data}) => {
+            .filter(([, data]: [string, PurchaseRowData]) => data.quantity > 0 && data.rate > 0)
+            .map(([medId, data]: [string, PurchaseRowData]) => {
                 const med = medicines.find(m => m.id === medId)!;
                 return {
                     medicineId: med.id,

@@ -1,13 +1,11 @@
 
+
 import React, { useState, useEffect, useCallback, createContext, useContext, ReactNode, useMemo, useRef, useLayoutEffect } from 'react';
 import { AppView, Medicine, MedicalStore, FinalizedBill, CartItem, NotificationState, NotificationType, Supplier, FinalizedPurchase, AppSection, PurchaseRowData, BillLayoutSettings, SalesSettings, MedicineDefinition, UserMedicineData, AppContextType, AppData } from './types';
 import { getInitialAppData } from './constants';
 
 // Firebase Imports
 import { auth, db } from './firebase';
-import { onAuthStateChanged, signOut, createUserWithEmailAndPassword, User as FirebaseUser } from 'firebase/auth';
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
-
 
 import ManageStores from './components/ManageStores';
 import Inventory from './components/Inventory';
@@ -869,7 +867,7 @@ export default function App() {
     const [isLoading, setIsLoading] = useState(true);
     const [notifications, setNotifications] = useState<NotificationState[]>([]);
     
-    const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+    const [currentUser, setCurrentUser] = useState<any | null>(null);
     const [authExiting, setAuthExiting] = useState(false);
 
     const [importFileContent, setImportFileContent] = useState<string | null>(null);
@@ -880,7 +878,7 @@ export default function App() {
 
     // --- Authentication Listener ---
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
+        const unsubscribe = auth.onAuthStateChanged((user) => {
             setCurrentUser(user);
             if (!user) {
                 // User is logged out
@@ -896,15 +894,15 @@ export default function App() {
     useEffect(() => {
         if (currentUser?.uid) {
             setIsLoading(true);
-            const docRef = doc(db, 'users', currentUser.uid);
-            const unsubscribe = onSnapshot(docRef, (docSnap) => {
-                if (docSnap.exists()) {
+            const docRef = db.collection('users').doc(currentUser.uid);
+            const unsubscribe = docRef.onSnapshot((docSnap) => {
+                if (docSnap.exists) {
                     setAppData(docSnap.data() as AppData);
                 } else {
                     // This case handles a newly signed-up user where the doc might not exist yet
                     // The handleSignUp function now creates it, so this is a fallback.
                     console.warn("User document not found, creating a new one.");
-                    setDoc(docRef, getInitialAppData()).then(() => setAppData(getInitialAppData()));
+                    docRef.set(getInitialAppData()).then(() => setAppData(getInitialAppData()));
                 }
                 setIsLoading(false);
             }, (error) => {
@@ -929,8 +927,8 @@ export default function App() {
     
         debounceTimeout.current = window.setTimeout(() => {
             if (currentUser.uid) {
-                const userDocRef = doc(db, 'users', currentUser.uid);
-                setDoc(userDocRef, newData).catch(err => {
+                const userDocRef = db.collection('users').doc(currentUser.uid);
+                userDocRef.set(newData).catch(err => {
                     console.error("Failed to save data:", err);
                     addNotification("Failed to sync data to cloud.", "error");
                 });
@@ -990,8 +988,8 @@ export default function App() {
             
             const finalData = { ...defaults, ...importedData };
             
-            const userDocRef = doc(db, 'users', currentUser.uid);
-            await setDoc(userDocRef, finalData);
+            const userDocRef = db.collection('users').doc(currentUser.uid);
+            await userDocRef.set(finalData);
             
             addNotification("Data imported successfully! The app will now use the new data.", "success");
             // No reload needed due to onSnapshot
@@ -1049,8 +1047,8 @@ export default function App() {
     const clearAllData = useCallback(async () => {
         if (!currentUser?.uid) return;
         try {
-            const userDocRef = doc(db, 'users', currentUser.uid);
-            await setDoc(userDocRef, getInitialAppData());
+            const userDocRef = db.collection('users').doc(currentUser.uid);
+            await userDocRef.set(getInitialAppData());
             addNotification(`Data for user "${currentUser.email}" has been reset.`, "success");
         } catch (error) {
             addNotification(`Failed to clear data.`, "error");
@@ -1062,15 +1060,15 @@ export default function App() {
     };
     
     const handleLogout = () => {
-        signOut(auth);
+        auth.signOut();
     };
 
     const handleSignUp = async (email: string, password: string): Promise<boolean> => {
         try {
-            const cred = await createUserWithEmailAndPassword(auth, email, password);
+            const cred = await auth.createUserWithEmailAndPassword(email, password);
             const user = cred.user;
             // Create the initial Firestore document for the new user
-            await setDoc(doc(db, "users", user.uid), getInitialAppData());
+            await db.collection("users").doc(user.uid).set(getInitialAppData());
             return true;
         } catch (error: any) {
             let message = "Sign up failed. Please try again.";

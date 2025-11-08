@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { NotificationType } from '../types';
-import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../firebase';
 
 interface AuthProps {
@@ -43,7 +42,7 @@ const Auth: React.FC<AuthProps> = ({ addNotification, onLoginSuccess, onSignUp }
         }
         setIsLoggingIn(true);
         try {
-            await signInWithEmailAndPassword(auth, loginEmail.trim(), loginPassword);
+            await auth.signInWithEmailAndPassword(loginEmail.trim(), loginPassword);
             setLoginSuccess(true);
             // onAuthStateChanged in App.tsx will handle the rest
             localStorage.setItem(LAST_USER_KEY, loginEmail.trim());
