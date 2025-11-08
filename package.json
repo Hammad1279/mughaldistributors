@@ -1,5 +1,5 @@
 {
-  "name": "1copy-of-mughal-distributors-os",
+  "name": "mughal-distributors-os",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,10 +10,15 @@
   },
   "dependencies": {
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "firebase/app": "latest",
+    "firebase/auth": "latest",
+    "firebase/firestore": "latest",
+    "firebase": "^12.5.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }

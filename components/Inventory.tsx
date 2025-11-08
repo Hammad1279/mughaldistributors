@@ -89,7 +89,7 @@ export default function Inventory() {
 
             <Card className="overflow-hidden">
                 <div className="overflow-x-auto custom-scrollbar">
-                    <table className="min-w-full text-sm text-left responsive-table">
+                    <table className="min-w-full text-sm text-left">
                         <thead className="bg-slate-900/50">
                             <tr>
                                 <th className="p-4 font-semibold text-slate-300 w-2/5">Medicine Name</th>

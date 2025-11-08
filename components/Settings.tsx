@@ -1,4 +1,11 @@
 
+
+
+
+
+
+
+
 import React, { useMemo, useEffect, useRef, useState } from 'react';
 import { Card, Icon, Button, Input, Modal } from './ui';
 import { useAppContext } from '../App';
@@ -137,6 +144,7 @@ export default function Settings() {
     } = useAppContext();
     
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [isDragging, setIsDragging] = useState(false);
 
     const highlights = useMemo(() => {
         if (!finalizedBills || finalizedBills.length === 0) {
@@ -200,10 +208,54 @@ export default function Settings() {
         e.target.value = ''; // Reset input so the same file can be selected again
     };
 
+    const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+            setIsDragging(true);
+        }
+    };
+
+    const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const relatedTarget = e.relatedTarget as Node;
+        if (!e.currentTarget.contains(relatedTarget)) {
+             setIsDragging(false);
+        }
+    };
+    
+    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+    };
+    
+    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+        if (e.dataTransfer.files?.[0]) {
+            initiateImport(e.dataTransfer.files[0]);
+        }
+    };
+
+
     return (
         <div 
             className="p-4 md:p-6 animate-fade-in space-y-8 relative"
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
         >
+             {isDragging && (
+                <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm z-10 flex items-center justify-center pointer-events-none rounded-lg">
+                    <div className="border-4 border-dashed border-violet-500 rounded-2xl p-16 text-center">
+                        <Icon name="upload_file" className="text-6xl text-violet-400 mb-4" />
+                        <p className="text-xl font-bold text-slate-200">Drop your backup file here</p>
+                    </div>
+                </div>
+            )}
             <input type="file" ref={fileInputRef} accept=".json" style={{ display: 'none' }} onChange={handleFileSelect} />
             <div>
                 <h1 className="text-3xl md:text-4xl font-bold text-white">Overview & Settings</h1>
@@ -289,6 +341,12 @@ export default function Settings() {
                             <Button onClick={() => fileInputRef.current?.click()} variant="secondary" className="w-full" icon="upload">Import Data</Button>
                             <Button onClick={downloadBackup} variant="success" className="w-full" icon="download">Export Data</Button>
                         </div>
+                    </Card>
+
+                    <Card className="p-6 border-red-500/50">
+                        <h2 className="text-xl font-semibold mb-4 text-red-400">Danger Zone</h2>
+                        <p className="text-slate-400 mb-6">Clearing all data is an irreversible action. It will reset your account to its initial state. The shared inventory of medicine names for all users will NOT be affected. Please export your data first if you want to keep a backup.</p>
+                         <Button onClick={handleClearData} variant="danger" className="w-full" icon="warning">Clear My Data</Button>
                     </Card>
                 </div>
             </div>

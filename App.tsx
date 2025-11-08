@@ -1,8 +1,13 @@
 
-
 import React, { useState, useEffect, useCallback, createContext, useContext, ReactNode, useMemo, useRef, useLayoutEffect } from 'react';
-import { AppView, Medicine, MedicalStore, FinalizedBill, CartItem, NotificationState, NotificationType, Supplier, FinalizedPurchase, AppSection, PurchaseRowData, BillLayoutSettings, SalesSettings, MedicineDefinition, UserMedicineData, AppContextType, AppData, User } from './types';
-import { INITIAL_MEDICINES_DATA } from './constants';
+import { AppView, Medicine, MedicalStore, FinalizedBill, CartItem, NotificationState, NotificationType, Supplier, FinalizedPurchase, AppSection, PurchaseRowData, BillLayoutSettings, SalesSettings, MedicineDefinition, UserMedicineData, AppContextType, AppData } from './types';
+import { getInitialAppData } from './constants';
+
+// Firebase Imports
+import { auth, db } from './firebase';
+import { onAuthStateChanged, signOut, createUserWithEmailAndPassword, User as FirebaseUser } from 'firebase/auth';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+
 
 import ManageStores from './components/ManageStores';
 import Inventory from './components/Inventory';
@@ -20,7 +25,6 @@ import ProfitReport from './components/ProfitReport';
 import Calculator from './components/Calculator';
 import { CapsLockModal } from './components/CapsLockModal';
 import Auth from './components/Auth';
-import LoginLoader from './components/LoginLoader';
 
 declare var Fuse: any;
 
@@ -194,30 +198,7 @@ const AppProvider: React.FC<{
 
     const finalizeBill = useCallback((billData: Omit<FinalizedBill, 'billNo' | 'date'>, isEditing: boolean, billNo: number): number | null => {
         const finalBill: FinalizedBill = { ...billData, billNo: billNo, date: new Date().toISOString() };
-        
-        updateAppData(ad => {
-            const newFinalizedBills = isEditing 
-                ? ad.finalizedBills.map(b => b.billNo === billNo ? finalBill : b) 
-                : [...ad.finalizedBills, finalBill];
-
-            const newUserMedicineData = { ...ad.user_medicine_data };
-            finalBill.items.forEach(item => {
-                if (newUserMedicineData[item.id]) {
-                    newUserMedicineData[item.id] = {
-                        ...newUserMedicineData[item.id],
-                        saleDiscount: item.discountValue,
-                        lastUpdated: new Date().toISOString()
-                    };
-                }
-            });
-
-            return {
-                ...ad,
-                finalizedBills: newFinalizedBills,
-                user_medicine_data: newUserMedicineData
-            };
-        });
-
+        updateAppData(ad => ({ ...ad, finalizedBills: isEditing ? ad.finalizedBills.map(b => b.billNo === billNo ? finalBill : b) : [...ad.finalizedBills, finalBill] }));
         return finalBill.billNo;
     }, [updateAppData]);
 
@@ -882,135 +863,81 @@ const SectionTransition: React.FC<{
     );
 };
 
-const USERS_LIST_KEY = 'mughal_os_users_list';
-const LAST_USER_KEY = 'mughal_os_last_user';
-const getUserDataKey = (username: string) => `mughal_os_data_${username.toLowerCase()}`;
-
-const getInitialAppData = (): AppData => {
-    const initialGlobalDefs: MedicineDefinition[] = INITIAL_MEDICINES_DATA.map(med => ({
-        id: crypto.randomUUID(),
-        name: med.name,
-        company: med.company,
-        type: med.type,
-        tags: med.name.toLowerCase().split(/\s+/).filter(Boolean),
-    }));
-
-    const initialUserMedicineData: Record<string, UserMedicineData> = {};
-    initialGlobalDefs.forEach((def, index) => {
-        const initialMed = INITIAL_MEDICINES_DATA[index];
-        initialUserMedicineData[def.id] = {
-            price: null,
-            discount: initialMed.discount,
-            saleDiscount: initialMed.saleDiscount,
-            batchNo: '',
-            lastUpdated: new Date(0).toISOString(),
-        };
-    });
-
-    return {
-        version: '1.0.0',
-        global_medicine_definitions: initialGlobalDefs,
-        user_medicine_data: initialUserMedicineData,
-        medicalStores: [],
-        finalizedBills: [],
-        suppliers: [],
-        finalizedPurchases: [],
-        billLayoutSettings: {
-            distributorName: 'Mughal Distributors',
-            distributorTitle: 'ESTIMATE',
-            distributorAddressLine1: 'Bismillah Plaza, Opp. Sonari Bank',
-            distributorAddressLine2: 'Chinioat Bazar, Faisalabad',
-            footerText: '',
-            showPhoneNumber: true,
-            showBillDate: true,
-            phoneNumber: '03040297400'
-        },
-        salesSettings: { showSalesTaxColumn: false, showBatchNo: false },
-        cart: [],
-        purchaseCart: {},
-        purchaseCartOrder: [],
-        currentBillingStoreID: null,
-        currentPurchaseSupplierID: null,
-        currentViewingSupplierId: null,
-        editingBillNo: null,
-        editingPurchaseId: null,
-        billFilterStoreID: null,
-    };
-};
-
 
 export default function App() {
     const [appData, setAppData] = useState<AppData | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [notifications, setNotifications] = useState<NotificationState[]>([]);
     
-    const [users, setUsers] = useState<User[]>([]);
-    const [currentUser, setCurrentUser] = useState<string | null>(null);
+    const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
     const [authExiting, setAuthExiting] = useState(false);
-    const [postLoginLoading, setPostLoginLoading] = useState(false);
 
     const [importFileContent, setImportFileContent] = useState<string | null>(null);
-    const [isGlobalDragging, setIsGlobalDragging] = useState(false);
     
-    // Load users list on initial render
+    const appDataRef = useRef(appData);
+    appDataRef.current = appData;
+    const debounceTimeout = useRef<number | null>(null);
+
+    // --- Authentication Listener ---
     useEffect(() => {
-        try {
-            const savedUsers = localStorage.getItem(USERS_LIST_KEY);
-            if (savedUsers) {
-                setUsers(JSON.parse(savedUsers));
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+            setCurrentUser(user);
+            if (!user) {
+                // User is logged out
+                setAppData(null);
+                setAuthExiting(false);
             }
-        } catch (error) {
-            console.error("Failed to load users list from local storage:", error);
-        } finally {
             setIsLoading(false);
-        }
+        });
+        return () => unsubscribe();
     }, []);
 
-    // Load user-specific data when currentUser changes
+    // --- Firestore Data Listener ---
     useEffect(() => {
-        if (currentUser) {
+        if (currentUser?.uid) {
             setIsLoading(true);
-            try {
-                const userKey = getUserDataKey(currentUser);
-                const savedData = localStorage.getItem(userKey);
-                if (savedData) {
-                    setAppData(JSON.parse(savedData));
+            const docRef = doc(db, 'users', currentUser.uid);
+            const unsubscribe = onSnapshot(docRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    setAppData(docSnap.data() as AppData);
                 } else {
-                    // This case handles a newly signed-up user
-                    setAppData(getInitialAppData());
+                    // This case handles a newly signed-up user where the doc might not exist yet
+                    // The handleSignUp function now creates it, so this is a fallback.
+                    console.warn("User document not found, creating a new one.");
+                    setDoc(docRef, getInitialAppData()).then(() => setAppData(getInitialAppData()));
                 }
-            } catch (error) {
-                console.error(`Failed to load data for user ${currentUser}:`, error);
-                setAppData(getInitialAppData()); // Load fresh data on error
-            } finally {
                 setIsLoading(false);
-            }
-        } else {
-            setAppData(null); // Clear data on logout
+            }, (error) => {
+                console.error("Firestore snapshot error:", error);
+                addNotification("Could not load data from cloud.", "error");
+                setIsLoading(false);
+            });
+            return () => unsubscribe();
         }
+    }, [currentUser?.uid]);
+
+    // Debounced update function to save data to Firestore
+    const updateAppData = useCallback((updater: (currentData: AppData) => AppData) => {
+        if (!currentUser || !appDataRef.current) return;
+    
+        const newData = updater(appDataRef.current);
+        setAppData(newData); // Optimistic UI update
+    
+        if (debounceTimeout.current) {
+            clearTimeout(debounceTimeout.current);
+        }
+    
+        debounceTimeout.current = window.setTimeout(() => {
+            if (currentUser.uid) {
+                const userDocRef = doc(db, 'users', currentUser.uid);
+                setDoc(userDocRef, newData).catch(err => {
+                    console.error("Failed to save data:", err);
+                    addNotification("Failed to sync data to cloud.", "error");
+                });
+            }
+        }, 1500); // 1.5 second debounce
     }, [currentUser]);
 
-    // Auto-save user-specific data to localStorage
-    useEffect(() => {
-        if (appData && !isLoading && currentUser) {
-            try {
-                localStorage.setItem(getUserDataKey(currentUser), JSON.stringify(appData));
-            } catch (error) {
-                console.error("Failed to save user data to local storage:", error);
-            }
-        }
-    }, [appData, isLoading, currentUser]);
-
-    // Auto-save users list to localStorage
-    useEffect(() => {
-        if (!isLoading) {
-            try {
-                localStorage.setItem(USERS_LIST_KEY, JSON.stringify(users));
-            } catch (error) {
-                console.error("Failed to save users list to local storage:", error);
-            }
-        }
-    }, [users, isLoading]);
 
     const startExitAnimation = useCallback((id: number) => {
         setNotifications(current =>
@@ -1035,84 +962,39 @@ export default function App() {
             addNotification("No data to create a backup from.", "warning");
             return;
         }
-        addNotification("Preparing your backup file...", "info");
         try {
-            // Create a clean version for export, removing transient state
-            const cleanData: AppData = {
-                ...appData,
-                cart: [],
-                purchaseCart: {},
-                purchaseCartOrder: [],
-                currentBillingStoreID: null,
-                currentPurchaseSupplierID: null,
-                currentViewingSupplierId: null,
-                editingBillNo: null,
-                editingPurchaseId: null,
-                billFilterStoreID: null
-            };
-            
-            const blob = new Blob([JSON.stringify(cleanData, null, 2)], { type: 'application/json' });
+            const blob = new Blob([JSON.stringify(appData, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `mughal_os_backup_${currentUser}_${new Date().toISOString().slice(0, 10)}.json`;
+            a.download = `mughal_os_backup_${currentUser.email}_${new Date().toISOString().slice(0, 10)}.json`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            addNotification("Backup data file saved successfully.", "success");
+            addNotification("Backup data file saved.", "success");
         } catch (error) {
-            console.error("Backup failed:", error);
-            addNotification("Failed to create backup file.", "error");
+            console.error("Save failed:", error);
+            addNotification("Failed to save backup file.", "error");
         }
     }, [appData, addNotification, currentUser]);
     
-    const importData = useCallback((jsonData: string) => {
-        if (!currentUser) {
+    const importData = useCallback(async (jsonData: string) => {
+        if (!currentUser?.uid) {
             addNotification("No user is logged in to import data for.", "error");
             return;
         }
         try {
             let importedData = JSON.parse(jsonData);
             const defaults = getInitialAppData();
-
-            // --- Migration/Compatibility Layer for older backup formats ---
-            if (importedData.medicineDefinitions && !importedData.global_medicine_definitions) {
-                importedData.global_medicine_definitions = importedData.medicineDefinitions;
-                delete importedData.medicineDefinitions;
-            }
-            if (importedData.userMedicineData && !importedData.user_medicine_data) {
-                importedData.user_medicine_data = importedData.userMedicineData;
-                delete importedData.userMedicineData;
-            }
-
-            // Ensure all top-level keys exist and merge nested settings objects
-            const finalData = {
-                ...defaults,
-                ...importedData,
-                billLayoutSettings: {
-                    ...defaults.billLayoutSettings,
-                    ...(importedData.billLayoutSettings || {})
-                },
-                salesSettings: {
-                    ...defaults.salesSettings,
-                    ...(importedData.salesSettings || {})
-                }
-            };
-
-            // --- Final Validation ---
-            if (
-                !Array.isArray(finalData.global_medicine_definitions) ||
-                !Array.isArray(finalData.medicalStores) ||
-                !Array.isArray(finalData.finalizedBills) ||
-                !Array.isArray(finalData.suppliers)
-            ) {
-                throw new Error("Invalid file format after migration attempt.");
-            }
-
-            localStorage.setItem(getUserDataKey(currentUser), JSON.stringify(finalData));
-            addNotification("Data imported successfully! The application will now reload.", "success");
-            setTimeout(() => window.location.reload(), 1500);
+            
+            const finalData = { ...defaults, ...importedData };
+            
+            const userDocRef = doc(db, 'users', currentUser.uid);
+            await setDoc(userDocRef, finalData);
+            
+            addNotification("Data imported successfully! The app will now use the new data.", "success");
+            // No reload needed due to onSnapshot
         } catch (error) {
             console.error("Import failed:", error);
             addNotification("Failed to import data. The file may be corrupted or in the wrong format.", "error");
@@ -1121,21 +1003,12 @@ export default function App() {
     
     const initiateImport = useCallback((file: File | null | undefined) => {
         if (file && (file.type === 'application/json' || file.name.endsWith('.json'))) {
-            addNotification("Reading backup file...", "info");
             const reader = new FileReader();
             reader.onload = (event) => {
-                try {
-                    const content = event.target?.result as string;
-                    // Pre-validate JSON before showing confirmation modal
-                    JSON.parse(content); 
-                    setImportFileContent(content);
-                } catch (e) {
-                    addNotification("Import failed: Invalid or corrupted JSON file.", "error");
-                    setImportFileContent(null);
-                }
+                setImportFileContent(event.target?.result as string);
             };
             reader.onerror = () => {
-                addNotification("Failed to read the selected file.", "error");
+                addNotification("Failed to read file.", "error");
             };
             reader.readAsText(file);
         } else if (file) {
@@ -1150,37 +1023,17 @@ export default function App() {
             e.stopPropagation();
         };
 
-        const handleDragEnter = (e: DragEvent) => {
-            preventDefaults(e);
-            if (e.dataTransfer?.items && e.dataTransfer.items.length > 0) {
-                setIsGlobalDragging(true);
-            }
-        };
-
-        const handleDragLeave = (e: DragEvent) => {
-            preventDefaults(e);
-            const relatedTarget = e.relatedTarget as Node;
-            if (!relatedTarget || (relatedTarget.nodeName === "HTML")) {
-                setIsGlobalDragging(false);
-            }
-        };
-
         const handleDrop = (e: DragEvent) => {
             preventDefaults(e);
-            setIsGlobalDragging(false);
             if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
                 initiateImport(e.dataTransfer.files[0]);
             }
         };
 
-        window.addEventListener('dragenter', handleDragEnter, false);
-        window.addEventListener('dragleave', handleDragLeave, false);
         window.addEventListener('dragover', preventDefaults, false);
         window.addEventListener('drop', handleDrop, false);
 
         return () => {
-            window.removeEventListener('dragenter', handleDragEnter, false);
-            window.removeEventListener('dragleave', handleDragLeave, false);
             window.removeEventListener('dragover', preventDefaults, false);
             window.removeEventListener('drop', handleDrop, false);
         };
@@ -1193,63 +1046,59 @@ export default function App() {
         setImportFileContent(null);
     };
 
-    const clearAllData = useCallback(() => {
-        if (!currentUser) return;
-        
-        localStorage.removeItem(getUserDataKey(currentUser));
-        addNotification(`Data for user "${currentUser}" cleared. Reloading application.`, "success");
-        setTimeout(() => window.location.reload(), 1500);
-
+    const clearAllData = useCallback(async () => {
+        if (!currentUser?.uid) return;
+        try {
+            const userDocRef = doc(db, 'users', currentUser.uid);
+            await setDoc(userDocRef, getInitialAppData());
+            addNotification(`Data for user "${currentUser.email}" has been reset.`, "success");
+        } catch (error) {
+            addNotification(`Failed to clear data.`, "error");
+        }
     }, [currentUser]);
 
-    const handleLoginSuccess = (username: string) => {
+    const handleLoginSuccess = () => {
         setAuthExiting(true);
-        localStorage.setItem(LAST_USER_KEY, username);
-        // After auth screen animates out (600ms)...
-        setTimeout(() => {
-            // Show the loader immediately
-            setPostLoginLoading(true);
-            // Set the current user to trigger background data loading
-            setCurrentUser(username);
-
-            // After 5 seconds, hide the loader to reveal the app
-            setTimeout(() => {
-                setPostLoginLoading(false);
-            }, 5000); // 5-second delay as requested
-        }, 600);
     };
     
     const handleLogout = () => {
-        setCurrentUser(null);
-        setAuthExiting(false);
+        signOut(auth);
     };
 
-    const handleSignUp = (newUser: Omit<User, 'id'>): boolean => {
-        const usernameExists = users.some(u => u.username.toLowerCase() === newUser.username.toLowerCase());
-        if (usernameExists) {
+    const handleSignUp = async (email: string, password: string): Promise<boolean> => {
+        try {
+            const cred = await createUserWithEmailAndPassword(auth, email, password);
+            const user = cred.user;
+            // Create the initial Firestore document for the new user
+            await setDoc(doc(db, "users", user.uid), getInitialAppData());
+            return true;
+        } catch (error: any) {
+            let message = "Sign up failed. Please try again.";
+            if (error.code === 'auth/email-already-in-use') {
+                message = `An account with email "${email}" already exists.`;
+            } else if (error.code === 'auth/invalid-email') {
+                message = 'Please use a valid email address.';
+            } else if (error.code === 'auth/weak-password') {
+                message = 'Password is too weak. Please use at least 6 characters.';
+            }
+            addNotification(message, 'error');
             return false;
         }
-        const userWithId: User = { ...newUser, id: crypto.randomUUID() };
-        setUsers(prev => [...prev, userWithId]);
-        // The useEffect for data loading will handle creating initial data
-        return true;
     };
 
     const isLoggedIn = !!currentUser;
 
     return (
         <>
-            {postLoginLoading && <LoginLoader />}
-
             {/* The main application is always rendered in the background to preload components, but remains invisible until login. */}
-            <div style={{ visibility: isLoggedIn && !postLoginLoading ? 'visible' : 'hidden' }}>
+            <div style={{ visibility: isLoggedIn ? 'visible' : 'hidden' }}>
                 { (isLoading || !appData) && isLoggedIn ? (
                     <div className="fixed inset-0 flex items-center justify-center bg-slate-900"><p>Loading App Data...</p></div>
                 ) : appData ? (
                     <AppContext.Provider value={{ downloadBackup, importData, initiateImport, clearAllData, logout: handleLogout } as any}>
                          <AppProvider
                             appData={appData}
-                            updateAppData={setAppData as (updater: (currentData: AppData) => AppData) => void}
+                            updateAppData={updateAppData as any}
                             addNotification={addNotification}
                             isLoggedIn={isLoggedIn}
                         >
@@ -1260,13 +1109,12 @@ export default function App() {
             </div>
 
             {/* The authentication screen is only rendered when not logged in. */}
-            {!isLoggedIn && (
+            {!isLoggedIn && !isLoading && (
                 <div className={`auth-container ${authExiting ? 'animate-auth-exit' : ''}`}>
                     <Auth 
                         addNotification={addNotification} 
                         onLoginSuccess={handleLoginSuccess}
                         onSignUp={handleSignUp}
-                        users={users}
                     />
                 </div>
             )}
@@ -1299,15 +1147,6 @@ export default function App() {
                     <Button variant="danger" onClick={handleConfirmImport} className="w-48" autoFocus>Yes, Import and Overwrite</Button>
                 </div>
             </Modal>
-            
-            {isGlobalDragging && (
-                <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[999] flex items-center justify-center pointer-events-none rounded-lg">
-                    <div className="border-4 border-dashed border-violet-500 rounded-2xl p-16 text-center">
-                        <Icon name="upload_file" className="text-6xl text-violet-400 mb-4" />
-                        <p className="text-xl font-bold text-slate-200">Drop backup file to import</p>
-                    </div>
-                </div>
-            )}
         </>
     );
 }

@@ -11,25 +11,27 @@ interface PurchaseRowData {
 
 type FocusableField = 'srch' | 'quantity' | 'rate' | 'discount' | 'batchNo';
 
-// FIX: Expanded the props interface to include all props passed from the parent component,
-// resolving numerous TypeScript errors about missing properties.
 interface PurchaseRowProps {
-    rowId: string;
     med: Medicine;
     data: PurchaseRowData | undefined;
     netAmount: number;
     onDataChange: (medId: string, field: keyof PurchaseRowData, value: string | number) => void;
     onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>, medId: string, field: FocusableField) => void;
     onFocus: (e: React.FocusEvent<HTMLInputElement>) => void;
+    
+    // Inline editing props
     isEditingName: boolean;
     editingNameValue: string;
     onNameChange: (newValue: string) => void;
     onStartEditName: () => void;
     onSaveName: () => void;
     onCancelEditName: () => void;
+    
+    // Drag and drop props
     onDragStart: (e: React.DragEvent<HTMLTableRowElement>) => void;
     onDragEnd: (e: React.DragEvent<HTMLTableRowElement>) => void;
     className: string;
+    rowId: string;
 }
 
 const PurchaseRow: React.FC<PurchaseRowProps> = ({
@@ -90,10 +92,10 @@ const PurchaseRow: React.FC<PurchaseRowProps> = ({
                     med.name
                 )}
             </td>
-            <td data-label="Quantity"><input id={`input-${med.id}-quantity`} type="number" className="grid-input" value={data?.quantity || ''} onChange={e => onDataChange(med.id, 'quantity', Number(e.target.value))} onKeyDown={e => onKeyDown(e, med.id, 'quantity')} onFocus={onFocus} /></td>
-            <td data-label="Rate"><input id={`input-${med.id}-rate`} type="number" className="grid-input" value={data?.rate || ''} onChange={e => onDataChange(med.id, 'rate', Number(e.target.value))} onKeyDown={e => onKeyDown(e, med.id, 'rate')} onFocus={onFocus} /></td>
-            <td data-label="Discount %"><input id={`input-${med.id}-discount`} type="number" className="grid-input" value={data?.discount || ''} onChange={e => onDataChange(med.id, 'discount', Number(e.target.value))} onKeyDown={e => onKeyDown(e, med.id, 'discount')} onFocus={onFocus} /></td>
-            <td data-label="Batch No."><input id={`input-${med.id}-batchNo`} type="text" className="grid-input" value={data?.batchNo || ''} onChange={e => onDataChange(med.id, 'batchNo', e.target.value)} onKeyDown={e => onKeyDown(e, med.id, 'batchNo')} onFocus={onFocus} /></td>
+            <td><input id={`input-${med.id}-quantity`} type="number" className="grid-input" value={data?.quantity || ''} onChange={e => onDataChange(med.id, 'quantity', Number(e.target.value))} onKeyDown={e => onKeyDown(e, med.id, 'quantity')} onFocus={onFocus} /></td>
+            <td><input id={`input-${med.id}-rate`} type="number" className="grid-input" value={data?.rate || ''} onChange={e => onDataChange(med.id, 'rate', Number(e.target.value))} onKeyDown={e => onKeyDown(e, med.id, 'rate')} onFocus={onFocus} /></td>
+            <td><input id={`input-${med.id}-discount`} type="number" className="grid-input" value={data?.discount || ''} onChange={e => onDataChange(med.id, 'discount', Number(e.target.value))} onKeyDown={e => onKeyDown(e, med.id, 'discount')} onFocus={onFocus} /></td>
+            <td><input id={`input-${med.id}-batchNo`} type="text" className="grid-input" value={data?.batchNo || ''} onChange={e => onDataChange(med.id, 'batchNo', e.target.value)} onKeyDown={e => onKeyDown(e, med.id, 'batchNo')} onFocus={onFocus} /></td>
             <td className="net-amount">{netAmount > 0 ? netAmount.toFixed(2) : ''}</td>
         </tr>
     );
