@@ -29,6 +29,5 @@
     "components",
     "utils",
     "data"
-  ],
-  "references": [{ "path": "./tsconfig.node.json" }]
+  ]
 }
