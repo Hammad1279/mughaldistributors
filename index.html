@@ -153,6 +153,17 @@
       .animate-modal-content-out {
           animation: modal-content-scale-out 0.3s cubic-bezier(0.7, 0, 0.84, 0) forwards;
       }
+      /* --- Form Error Styling --- */
+      .form-error-message {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem; /* 8px */
+          color: #f87171; /* red-400 */
+          font-size: 0.875rem; /* 14px */
+          margin-top: 0.5rem; /* 8px */
+          animation: fade-in-content 0.3s ease-in-out;
+      }
+      /* --- End Form Error Styling --- */
        @keyframes slide-in-left {
           from { transform: translateX(-100%); }
           to { transform: translateX(0); }

@@ -100,7 +100,10 @@ const StoreForm = ({
                     onKeyDown={handleKeyDown}
                 />
                 {nameIsDuplicate && (
-                     <p className="text-red-400 text-sm mt-1.5">This store name already exists.</p>
+                    <p className="form-error-message">
+                        <Icon name="error" className="!text-base" />
+                        <span>This store name already exists.</span>
+                    </p>
                 )}
             </div>
             <div>

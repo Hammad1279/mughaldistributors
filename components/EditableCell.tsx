@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { CellData } from '../types';
 
@@ -53,7 +54,7 @@ export const EditableCell: React.FC<EditableCellProps> = ({
         onStartEditing();
     };
     
-    const cellStyle = {
+    const cellStyle: React.CSSProperties = {
         fontWeight: cellData.style?.fontWeight || 'normal',
         fontStyle: cellData.style?.fontStyle || 'normal',
         textDecoration: cellData.style?.textDecoration || 'none',
@@ -74,7 +75,7 @@ export const EditableCell: React.FC<EditableCellProps> = ({
             className={`grid-cell ${isSelected ? 'selected' : ''}`}
             onClick={onSelect}
             onDoubleClick={handleDoubleClick}
-            style={cellStyle as React.CSSProperties}
+            style={cellStyle}
         >
             {isEditing ? (
                 <input
@@ -89,7 +90,7 @@ export const EditableCell: React.FC<EditableCellProps> = ({
                         textAlign: cellStyle.textAlign,
                         fontFamily: cellStyle.fontFamily,
                         fontSize: cellStyle.fontSize,
-                    } as any}
+                    }}
                 />
             ) : (
                 <div 
@@ -97,7 +98,7 @@ export const EditableCell: React.FC<EditableCellProps> = ({
                     title={cellData.error ?? undefined}
                     style={{
                        justifyContent: cellStyle.textAlign === 'right' ? 'flex-end' : cellStyle.textAlign === 'center' ? 'center' : 'flex-start'
-                    } as any}
+                    }}
                 >
                     {displayValue}
                 </div>

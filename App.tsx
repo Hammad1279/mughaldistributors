@@ -905,9 +905,18 @@ export default function App() {
                     docRef.set(getInitialAppData()).then(() => setAppData(getInitialAppData()));
                 }
                 setIsLoading(false);
-            }, (error) => {
+            }, (error: any) => {
                 console.error("Firestore snapshot error:", error);
-                addNotification("Could not load data from cloud.", "error");
+                let message = "Could not load data from cloud.";
+                switch (error.code) {
+                    case 'permission-denied':
+                        message = "Error: Permission denied. Please check your login credentials.";
+                        break;
+                    case 'unavailable':
+                        message = "Error: Cannot connect to the server. Please check your internet connection.";
+                        break;
+                }
+                addNotification(message, "error");
                 setIsLoading(false);
             });
             return () => unsubscribe();
@@ -930,7 +939,7 @@ export default function App() {
                 const userDocRef = db.collection('users').doc(currentUser.uid);
                 userDocRef.set(newData).catch(err => {
                     console.error("Failed to save data:", err);
-                    addNotification("Failed to sync data to cloud.", "error");
+                    addNotification("Failed to sync data. Please check your connection.", "error");
                 });
             }
         }, 1500); // 1.5 second debounce
@@ -993,9 +1002,15 @@ export default function App() {
             
             addNotification("Data imported successfully! The app will now use the new data.", "success");
             // No reload needed due to onSnapshot
-        } catch (error) {
+        } catch (error: any) {
             console.error("Import failed:", error);
-            addNotification("Failed to import data. The file may be corrupted or in the wrong format.", "error");
+            let message = "Failed to import data. The file may be corrupted or in the wrong format.";
+            if (error instanceof SyntaxError) {
+                message = "Import failed: The file is not valid JSON. Please provide a valid backup file.";
+            } else if (error.code) { // Likely a Firebase error
+                message = "Import failed: Could not save data to the cloud. Please check your connection.";
+            }
+            addNotification(message, "error");
         }
     }, [currentUser, addNotification]);
     
@@ -1051,7 +1066,8 @@ export default function App() {
             await userDocRef.set(getInitialAppData());
             addNotification(`Data for user "${currentUser.email}" has been reset.`, "success");
         } catch (error) {
-            addNotification(`Failed to clear data.`, "error");
+            console.error("Failed to clear data:", error);
+            addNotification(`Failed to clear data. Please check your connection and try again.`, "error");
         }
     }, [currentUser]);
 
@@ -1078,6 +1094,9 @@ export default function App() {
                 message = 'Please use a valid email address.';
             } else if (error.code === 'auth/weak-password') {
                 message = 'Password is too weak. Please use at least 6 characters.';
+            } else {
+                 console.error("Unhandled signup error:", error);
+                 message = "An unexpected error occurred during sign up. Please check your connection.";
             }
             addNotification(message, 'error');
             return false;

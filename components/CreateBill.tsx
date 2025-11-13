@@ -417,8 +417,8 @@ export default function CreateBill() {
     };
 
     const handleFinalizeBill = async (andPrint = false) => {
-        if (!activeStore) { addNotification("No store selected.", "error"); return; }
-        if (cart.length === 0) { addNotification("Cart is empty.", "error"); return; }
+        if (!activeStore) { addNotification("Cannot finalize: No store is selected.", "error"); return; }
+        if (cart.length === 0) { addNotification("Cannot finalize: The bill is empty.", "error"); return; }
 
         const billDataForFirestore = {
             storeId: activeStore.id,
@@ -433,7 +433,7 @@ export default function CreateBill() {
 
         const billNumberToUse = Number(billNo);
         if (isNaN(billNumberToUse) || billNumberToUse <= 0) {
-            addNotification("Invalid Bill Number.", "error");
+            addNotification("Invalid Bill Number. It must be a positive number.", "error");
             return;
         }
         

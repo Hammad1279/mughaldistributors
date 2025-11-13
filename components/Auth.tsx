@@ -57,6 +57,9 @@ const Auth: React.FC<AuthProps> = ({ addNotification, onLoginSuccess, onSignUp }
                 message = 'Invalid email or password.';
             } else if (error.code === 'auth/invalid-email') {
                 message = 'Please enter a valid email address.';
+            } else {
+                 console.error("Unhandled login error:", error);
+                 message = "Login failed. Please check your internet connection and try again.";
             }
             addNotification(message, 'error');
         } finally {

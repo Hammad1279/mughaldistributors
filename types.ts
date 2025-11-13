@@ -166,7 +166,7 @@ export interface CellStyle {
   fontWeight?: string | number;
   fontStyle?: string;
   textDecoration?: string;
-  textAlign?: string;
+  textAlign?: 'left' | 'right' | 'center' | 'justify';
   verticalAlign?: string | number;
   backgroundColor?: string;
   color?: string;
