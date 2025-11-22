@@ -1,5 +1,4 @@
 
-
 import React, { useState, useRef, useEffect } from 'react';
 import { CellStyle } from '../types';
 import { Icon } from './ui';
@@ -123,7 +122,7 @@ const ColorPicker: React.FC<{
 export const Ribbon: React.FC<RibbonProps> = ({ 
     selectedStyle, 
     onStyleChange, 
-    onInsertChart,
+    onInsertChart: _onInsertChart,
     onRowAction,
     onColAction,
     onFormatPainter,

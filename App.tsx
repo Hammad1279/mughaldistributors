@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useCallback, createContext, useContext, ReactNode, useMemo, useRef, useLayoutEffect } from 'react';
 import { AppView, Medicine, MedicalStore, FinalizedBill, CartItem, NotificationState, NotificationType, Supplier, FinalizedPurchase, AppSection, PurchaseRowData, BillLayoutSettings, SalesSettings, MedicineDefinition, UserMedicineData, AppContextType, AppData } from './types';
 import { getInitialAppData } from './constants';
@@ -14,7 +13,7 @@ import YourBills from './components/YourBills';
 import Settings from './components/Settings';
 import ManageSuppliers from './components/ManageSuppliers';
 import Purchase from './components/Purchase';
-import { Icon, Modal, Button, ToggleSwitch, Input } from './components/ui';
+import { Icon, Modal, Button, ToggleSwitch, MobileNavBar } from './components/ui';
 import PurchaseHistory from './components/PurchaseHistory';
 import YourPurchases from './components/YourPurchases';
 import DiscountSheet from './components/DiscountSheet';
@@ -43,6 +42,7 @@ const AppProvider: React.FC<{
 }> = ({ children, appData, updateAppData, addNotification, isLoggedIn }) => {
     const [activeSection, setActiveSection] = useState<AppSection>('welcome');
     const [activeView, setActiveView] = useState<AppView>('welcome');
+    const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
     
     const [transitionElement, setTransitionElement] = useState<HTMLElement | null>(null);
     const [transitionTargetView, setTransitionTargetView] = useState<AppView | null>(null);
@@ -51,6 +51,13 @@ const AppProvider: React.FC<{
         global_medicine_definitions: globalMedicines,
         user_medicine_data: userMedicineData
     } = appData;
+
+    // Handle resize for responsive layout
+    useEffect(() => {
+        const handleResize = () => setIsMobile(window.innerWidth < 768);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     // --- Re-hydrating client-side state from loaded user data file ---
     const [cart, setCart] = useState<CartItem[]>(appData.cart);
@@ -96,8 +103,9 @@ const AppProvider: React.FC<{
         };
     }, []);
 
+    // Disable CapsLock requirement on mobile
     const capsLockRequired = activeView === 'create-bill';
-    const showCapsLockModal = capsLockRequired && !isCapsLockOn;
+    const showCapsLockModal = capsLockRequired && !isCapsLockOn && !isMobile;
     
     const { 
         medicalStores, finalizedBills, suppliers, finalizedPurchases,
@@ -190,7 +198,7 @@ const AppProvider: React.FC<{
         updateAppData(ad => ({ ...ad, user_medicine_data: { ...ad.user_medicine_data, [id]: { ...(ad.user_medicine_data[id] || {}), ...userUpdate } }}));
     }, [updateAppData]);
 
-    const deleteMedicine = useCallback((medId: string) => {
+    const deleteMedicine = useCallback((_medId: string) => {
         addNotification("Deleting from global inventory is not supported in this version.", "info");
     }, [addNotification]);
 
@@ -379,6 +387,7 @@ const AppProvider: React.FC<{
     }, [addNotification]);
     
     const value: AppContextType = {
+        isMobile,
         medicines, medicalStores, finalizedBills, suppliers, finalizedPurchases, billLayoutSettings, salesSettings,
         updateAppData,
         cart, setCart,
@@ -415,11 +424,15 @@ const AppProvider: React.FC<{
 
     return (
         <AppContext.Provider value={{...value, ...useContext(AppContext)}}>
-            <div className="flex flex-col h-screen bg-slate-900">
+            <div className={`flex flex-col h-screen bg-slate-900 ${isMobile ? 'pb-16' : ''}`}>
                 <Header isAnimatingIn={isLoggedIn} />
-                <div className="flex-1 overflow-y-auto custom-scrollbar">
+                <div className={`flex-1 overflow-y-auto custom-scrollbar ${isMobile ? 'px-2' : ''}`}>
                     <MainContent isAnimatingIn={isLoggedIn} />
                 </div>
+                {children}
+                {isMobile && isLoggedIn && (
+                    <MobileNavBar activeTab={activeView} onTabChange={setActiveView} />
+                )}
             </div>
             <Calculator 
                 isOpen={isCalculatorOpen}
@@ -470,19 +483,14 @@ const Notification: React.FC<NotificationState & { onClose: () => void, onExited
 const Header: React.FC<{ isAnimatingIn: boolean; }> = ({ isAnimatingIn }) => {
   const { 
       activeView, setActiveView, activeSection, navigateToSection, 
-      focusedMed, hoveredMed, setIsCalculatorOpen, salesSettings, billLayoutSettings,
-      updateAppData, addNotification, updateBillLayoutSettings, downloadBackup, logout
+      focusedMed, hoveredMed, setIsCalculatorOpen, salesSettings,
+      updateAppData, addNotification, logout, isMobile
   } = useAppContext();
   const [isMobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number; }>({ visible: false, x: 0, y: 0 });
   const [isSettingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const settingsMenuTimeoutRef = useRef<number | null>(null);
-
-  const _updateBillLayoutSettings = useCallback((newSettings: Partial<BillLayoutSettings>) => {
-        updateBillLayoutSettings(newSettings);
-        addNotification("Bill layout settings updated.", "success");
-    }, [updateBillLayoutSettings, addNotification]);
 
     const updateSalesSettings = useCallback((newSettings: Partial<SalesSettings>) => {
         updateAppData(ad => ({ ...ad, salesSettings: { ...ad.salesSettings, ...newSettings }}));
@@ -637,15 +645,15 @@ const Header: React.FC<{ isAnimatingIn: boolean; }> = ({ isAnimatingIn }) => {
                         <path d="M7 17V7L12 14L17 7V17" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                 </div>
-                <div className="hidden md:block">
+                <div className={isMobile ? "block" : "hidden md:block"}>
                     <h1 className="text-base font-bold text-white leading-tight">MUGHAL</h1>
                     <p className="text-xs text-violet-300 leading-tight">DISTRIBUTORS</p>
                 </div>
             </div>
         </div>
         
-        {/* Center: Nav */}
-        {activeSection !== 'welcome' && (
+        {/* Center: Nav - HIDE ON MOBILE */}
+        {!isMobile && activeSection !== 'welcome' && (
              <div className="flex-shrink-0">
                 <NavLinks />
             </div>
@@ -669,33 +677,16 @@ const Header: React.FC<{ isAnimatingIn: boolean; }> = ({ isAnimatingIn }) => {
                             {activeItemDiscount !== null ? `${activeItemDiscount}%` : ''}
                         </div>
                     </div>
-                    
-                    {/* Mobile Menu Toggle */}
-                    <button onClick={() => setMobileMenuOpen(true)} className="p-2 rounded-full hover:bg-slate-700/80 transition-colors focus:outline-none md:hidden">
-                        <Icon name="menu" className="text-xl text-slate-300" />
-                    </button>
                 </>
              )}
+              {/* Logout on Mobile Header */}
+              {isMobile && (
+                  <button onClick={handleLogoutClick} className="text-slate-400 hover:text-white">
+                      <Icon name="logout" />
+                  </button>
+              )}
         </div>
       </header>
-      
-      {/* Mobile Drawer */}
-      {isMobileMenuOpen && activeSection !== 'welcome' && (
-        <div className="fixed inset-0 z-[110] no-print" role="dialog" aria-modal="true">
-          <div className="absolute inset-0 bg-slate-900/70 backdrop-blur-sm animate-modal-bg" onClick={() => setMobileMenuOpen(false)}></div>
-          <div className="relative bg-slate-800 h-full w-72 max-w-[80vw] shadow-2xl flex flex-col animate-slide-in-left">
-            <div className="flex items-center justify-between p-4 border-b border-slate-700">
-              <h2 className="font-bold text-white">Menu</h2>
-              <button onClick={() => setMobileMenuOpen(false)} className="p-2 rounded-full hover:bg-slate-700/80">
-                <Icon name="close" className="text-xl" />
-              </button>
-            </div>
-            <div className="overflow-y-auto custom-scrollbar">
-              <NavLinks isMobile={true} />
-            </div>
-          </div>
-        </div>
-      )}
       
       {/* Context Menu */}
        {contextMenu.visible && (
@@ -1082,10 +1073,14 @@ export default function App() {
     const handleSignUp = async (email: string, password: string): Promise<boolean> => {
         try {
             const cred = await auth.createUserWithEmailAndPassword(email, password);
-            const user = cred.user;
-            // Create the initial Firestore document for the new user
-            await db.collection("users").doc(user.uid).set(getInitialAppData());
-            return true;
+            if (cred.user) {
+                // Create the initial Firestore document for the new user
+                await db.collection("users").doc(cred.user.uid).set(getInitialAppData());
+                return true;
+            } else {
+                addNotification("Sign up failed: No user created.", 'error');
+                return false;
+            }
         } catch (error: any) {
             let message = "Sign up failed. Please try again.";
             if (error.code === 'auth/email-already-in-use') {

@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAppContext } from '../App';
 import { MedicalStore } from '../types';
-import { Button, Input, Textarea, Icon, Modal, Card, SearchInput } from './ui';
+import { Button, Input, Textarea, Icon, Modal, SearchInput } from './ui';
 import StoreListItem from './StoreListItem';
 
 declare var Fuse: any;
@@ -148,7 +149,7 @@ export default function ManageStores() {
     const filteredStores = useMemo(() => {
         const sortedStores = [...medicalStores].sort((a, b) => a.name.localeCompare(b.name));
         if (!searchTerm.trim()) return sortedStores;
-        return storeFuse.search(searchTerm.trim()).map((result: any) => result.item);
+        return storeFuse.search(searchTerm.trim()).map((result: any) => result.item as MedicalStore);
     }, [searchTerm, medicalStores, storeFuse]);
     
     const allStoreNames = useMemo(() => medicalStores.map(s => s.name.trim().toLowerCase()), [medicalStores]);

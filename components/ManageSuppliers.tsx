@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAppContext } from '../App';
 import { Supplier } from '../types';
-import { Button, Input, Textarea, Icon, Modal, Card, SearchInput } from './ui';
+import { Button, Input, Textarea, Icon, Modal, SearchInput } from './ui';
 import SupplierListItem from './SupplierListItem';
 import { StockLevelsModal } from './StockLevelsModal';
 
@@ -122,7 +123,7 @@ export default function ManageSuppliers() {
     const filteredSuppliers = useMemo(() => {
         const sorted = [...suppliers].sort((a, b) => a.name.localeCompare(b.name));
         if (!searchTerm.trim()) return sorted;
-        return supplierFuse.search(searchTerm.trim()).map((result: any) => result.item);
+        return supplierFuse.search(searchTerm.trim()).map((result: any) => result.item as Supplier);
     }, [searchTerm, suppliers, supplierFuse]);
     
     const allSupplierNames = useMemo(() => suppliers.map(s => s.name.trim().toLowerCase()), [suppliers]);

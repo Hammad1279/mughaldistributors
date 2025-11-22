@@ -1,15 +1,7 @@
 
-
-
-
-
-
-
-
 import React, { useMemo, useEffect, useRef, useState } from 'react';
-import { Card, Icon, Button, Input, Modal } from './ui';
+import { Card, Icon, Button, Input } from './ui';
 import { useAppContext } from '../App';
-import { Medicine, MedicalStore, FinalizedBill, Supplier, FinalizedPurchase } from '../types';
 import { ToggleSwitch } from './ui';
 
 declare var Chart: any;
@@ -138,7 +130,7 @@ const SalesChart = () => {
 
 export default function Settings() {
     const { 
-        addNotification, medicines, finalizedBills, medicalStores,
+        addNotification, medicines, finalizedBills,
         setActiveView, clearAllData, billLayoutSettings, updateBillLayoutSettings,
         downloadBackup, initiateImport
     } = useAppContext();

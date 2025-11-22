@@ -1,5 +1,6 @@
 
 
+
 import React from 'react';
 
 // --- USER AUTHENTICATION ---
@@ -198,6 +199,8 @@ export interface ChartConfig {
 
 // --- APP CONTEXT ---
 export interface AppContextType {
+    isMobile: boolean; // New flag for responsive logic
+
     // Data collections (from app state)
     medicines: Medicine[];
     medicalStores: MedicalStore[];

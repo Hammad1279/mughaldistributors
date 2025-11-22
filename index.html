@@ -1,9 +1,10 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Mughal Distributors OS</title>
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -18,7 +19,15 @@
       @import url('https://fonts.googleapis.com/css2?family=Calibri&family=Arial&family=Times+New+Roman&family=Courier+New&family=Verdana&family=Georgia&family=Garamond&family=Comic+Sans+MS&family=Impact&display=swap');
       body {
         font-family: 'Inter', sans-serif;
+        -webkit-tap-highlight-color: transparent;
+        padding-bottom: env(safe-area-inset-bottom);
       }
+      
+      /* Mobile Safe Areas */
+      .safe-bottom {
+          padding-bottom: env(safe-area-inset-bottom);
+      }
+
       .material-symbols-outlined {
         font-variation-settings:
         'FILL' 0,
@@ -171,6 +180,23 @@
       .animate-slide-in-left {
         animation: slide-in-left 0.3s cubic-bezier(0, 0, 0.2, 1) forwards;
       }
+      
+      /* Bottom Sheet Animation */
+      @keyframes slide-up {
+          from { transform: translateY(100%); }
+          to { transform: translateY(0); }
+      }
+      .animate-slide-up {
+          animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+       @keyframes slide-down {
+          from { transform: translateY(0); }
+          to { transform: translateY(100%); }
+      }
+      .animate-slide-down {
+          animation: slide-down 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+
 
       /* Notification Animations */
       @keyframes notification-in {
@@ -896,6 +922,21 @@
       /* --- WELCOME CARD MAGNETIC EFFECT --- */
       .magnetic-content {
         transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      }
+      
+      /* MOBILE SPECIFIC OVERRIDES */
+      @media (max-width: 768px) {
+          .section-transition-overlay {
+              top: 0;
+              height: 100vh;
+          }
+          /* iOS Bottom Tab Bar */
+          .ios-tab-bar {
+              background: rgba(15, 23, 42, 0.85);
+              backdrop-filter: blur(20px);
+              -webkit-backdrop-filter: blur(20px);
+              border-top: 1px solid rgba(255,255,255,0.1);
+          }
       }
     </style>
 <script type="importmap">

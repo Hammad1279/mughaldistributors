@@ -1,7 +1,8 @@
+
 import React, { useState, useMemo, useCallback } from 'react';
 import { useAppContext } from '../App';
 import { Medicine } from '../types';
-import { Card, Button, Input, Icon, Modal, SearchInput } from './ui';
+import { Card, Button, Icon, SearchInput } from './ui';
 import { ProductModal } from './ProductModal';
 import InventoryRow from './InventoryRow';
 
@@ -21,7 +22,7 @@ export default function Inventory() {
     const filteredMedicines = useMemo(() => {
         const sorted = [...medicines].sort((a, b) => a.name.localeCompare(b.name));
         if (!searchTerm.trim()) return sorted;
-        return medicineFuse.search(searchTerm.trim()).map((result: any) => result.item);
+        return medicineFuse.search(searchTerm.trim()).map((result: any) => result.item as Medicine);
     }, [searchTerm, medicines, medicineFuse]);
 
     const { total, priced, unpriced } = useMemo(() => {

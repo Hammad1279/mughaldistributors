@@ -1,11 +1,8 @@
-
-
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useAppContext } from '../App';
-import { Medicine, FinalizedPurchase, PurchaseItem as FinalizedPurchaseItem, PurchaseRowData } from '../types';
+import { Medicine, PurchaseItem, PurchaseRowData } from '../types';
 import { Card, Button, Icon } from './ui';
 import PurchaseRow from './PurchaseRow';
-import { ProductModal } from './ProductModal';
 
 declare var Fuse: any;
 
@@ -204,7 +201,7 @@ export default function Purchase() {
             if (newSearchTerm && targetElement) {
                 const results = medicineFuse.current.search(newSearchTerm).map((r: any) => r.item).slice(0, 5);
                 const searchResults: (Medicine | { id: 'add_new', name: string })[] = [...results];
-                if (!results.some(r => r.name.toLowerCase() === newSearchTerm.toLowerCase())) {
+                if (!results.some((r: any) => r.name.toLowerCase() === newSearchTerm.toLowerCase())) {
                     searchResults.push({ id: 'add_new', name: newSearchTerm });
                 }
                 
@@ -226,7 +223,7 @@ export default function Purchase() {
         }
     }, [setPurchaseCart]);
     
-    const handleSelectSearchResult = useCallback(async (item: Medicine | { id: 'add_new'; name: string }, rowId: string) => {
+    const handleSelectSearchResult = useCallback(async (item: Medicine | { id: 'add_new'; name: string }, _rowId: string) => {
         setActiveSearch(null);
         setSearchTerm(''); 
 
@@ -365,7 +362,7 @@ export default function Purchase() {
 
         // FIX: Add explicit types to filter/map callbacks to resolve TS errors where `data` was `unknown`.
         // Also removed a redundant .map() call for efficiency.
-        const itemsForPurchase: FinalizedPurchaseItem[] = Object.entries(purchaseCart)
+        const itemsForPurchase: PurchaseItem[] = Object.entries(purchaseCart)
             .filter(([, data]: [string, PurchaseRowData]) => data.quantity > 0 && data.rate > 0)
             .map(([medId, data]: [string, PurchaseRowData]) => {
                 const med = medicines.find(m => m.id === medId)!;
