@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect, useCallback, createContext, useContext, ReactNode, useMemo, useRef, useLayoutEffect } from 'react';
-import { AppView, Medicine, MedicalStore, FinalizedBill, CartItem, NotificationState, NotificationType, Supplier, FinalizedPurchase, AppSection, PurchaseRowData, BillLayoutSettings, SalesSettings, MedicineDefinition, UserMedicineData, AppContextType, AppData } from './types';
+import { AppView, Medicine, MedicalStore, FinalizedBill, CartItem, NotificationState, NotificationType, Supplier, FinalizedPurchase, AppSection, PurchaseRowData, BillLayoutSettings, SalesSettings, MedicineDefinition, UserMedicineData, AppContextType, AppData, UserProfile } from './types';
 import { getInitialAppData } from './constants';
-
-// Firebase Imports
 import { auth, db } from './firebase';
+import { onAuthStateChanged, signOut, deleteUser } from 'firebase/auth';
+import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 
 import ManageStores from './components/ManageStores';
 import Inventory from './components/Inventory';
@@ -22,8 +22,12 @@ import ProfitReport from './components/ProfitReport';
 import Calculator from './components/Calculator';
 import { CapsLockModal } from './components/CapsLockModal';
 import Auth from './components/Auth';
+import ProfileModal from './components/ProfileModal';
+import './components/ContextMenu.css'; // Import the new styles
 
 declare var Fuse: any;
+
+const LOCAL_STORAGE_KEY = 'mughal_os_local_data';
 
 const AppContext = createContext<AppContextType | null>(null);
 export const useAppContext = () => {
@@ -38,8 +42,14 @@ const AppProvider: React.FC<{
     appData: AppData;
     updateAppData: (updater: (currentData: AppData) => AppData) => void;
     addNotification: (message: string, type?: NotificationType) => void;
-    isLoggedIn: boolean;
-}> = ({ children, appData, updateAppData, addNotification, isLoggedIn }) => {
+    onLogout: () => void;
+    // Pass Profile props
+    userProfile: UserProfile | null;
+    updateUserProfile: (updates: Partial<UserProfile>) => Promise<void>;
+    deleteUserAccount: () => Promise<void>;
+    isProfileModalOpen: boolean;
+    setIsProfileModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
+}> = ({ children, appData, updateAppData, addNotification, onLogout, userProfile, updateUserProfile, deleteUserAccount, isProfileModalOpen, setIsProfileModalOpen }) => {
     const [activeSection, setActiveSection] = useState<AppSection>('welcome');
     const [activeView, setActiveView] = useState<AppView>('welcome');
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -415,22 +425,24 @@ const AppProvider: React.FC<{
         addSupplier, updateSupplier, deleteSupplier,
         postPurchase, deleteFinalizedPurchase,
         updateBillLayoutSettings,
+        userProfile, updateUserProfile, deleteUserAccount,
+        isProfileModalOpen, setIsProfileModalOpen,
         downloadBackup: () => {}, // Provided by App component
         importData: () => {}, // Provided by App component
         clearAllData: () => {}, // Provided by App component
-        logout: () => {}, // Provided by App component
+        logout: onLogout, // Provided by App component
         initiateImport: () => {}, // Provided by App component
     };
 
     return (
         <AppContext.Provider value={{...value, ...useContext(AppContext)}}>
             <div className={`flex flex-col h-screen bg-slate-900 ${isMobile ? 'pb-16' : ''}`}>
-                <Header isAnimatingIn={isLoggedIn} />
+                <Header />
                 <div className={`flex-1 overflow-y-auto custom-scrollbar ${isMobile ? 'px-2' : ''}`}>
-                    <MainContent isAnimatingIn={isLoggedIn} />
+                    <MainContent />
                 </div>
                 {children}
-                {isMobile && isLoggedIn && (
+                {isMobile && (
                     <MobileNavBar activeTab={activeView} onTabChange={setActiveView} />
                 )}
             </div>
@@ -439,6 +451,7 @@ const AppProvider: React.FC<{
                 onClose={() => setIsCalculatorOpen(false)}
             />
              <CapsLockModal isOpen={showCapsLockModal} onDismiss={() => {}} />
+             <ProfileModal />
              {transitionElement && transitionTargetView && (
                 <SectionTransition
                     element={transitionElement}
@@ -480,11 +493,12 @@ const Notification: React.FC<NotificationState & { onClose: () => void, onExited
     );
 };
 
-const Header: React.FC<{ isAnimatingIn: boolean; }> = ({ isAnimatingIn }) => {
+const Header: React.FC = () => {
   const { 
       activeView, setActiveView, activeSection, navigateToSection, 
       focusedMed, hoveredMed, setIsCalculatorOpen, salesSettings,
-      updateAppData, addNotification, logout, isMobile
+      updateAppData, addNotification, isMobile, clearAllData, logout,
+      setIsProfileModalOpen
   } = useAppContext();
   const [isMobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number; }>({ visible: false, x: 0, y: 0 });
@@ -564,12 +578,19 @@ const Header: React.FC<{ isAnimatingIn: boolean; }> = ({ isAnimatingIn }) => {
       }
       closeContextMenu();
   };
-  
-  const handleLogoutClick = () => {
-      logout();
+
+  const handleProfileClick = () => {
+      setIsProfileModalOpen(true);
+      closeContextMenu();
+  };
+
+  const handleClearData = () => {
+      if(window.confirm("Are you sure you want to clear all local app data?")) {
+          clearAllData(false);
+      }
       closeContextMenu();
   }
-
+  
   const sectionNavItems: Record<Exclude<AppSection, 'welcome'>, { id: AppView; name: string; icon: string }[]> = {
     sales: [
         { id: 'manage-stores', name: 'Stores', icon: 'storefront' },
@@ -635,7 +656,7 @@ const Header: React.FC<{ isAnimatingIn: boolean; }> = ({ isAnimatingIn }) => {
 
   return (
     <>
-      <header className={`h-16 bg-slate-800/70 backdrop-blur-md border-b border-slate-700/80 flex items-center px-4 md:px-6 sticky top-0 z-[102] no-print ${isAnimatingIn ? 'animate-header-in' : ''}`}>
+      <header className={`h-16 bg-[#160c2e]/90 backdrop-blur-md border-b border-white/10 flex items-center px-4 md:px-6 sticky top-0 z-[102] no-print animate-header-in`}>
         {/* Left: Logo */}
         <div className="flex-1 flex justify-start">
             <div className="flex items-center gap-3 cursor-pointer" onClick={handleLogoClick} onContextMenu={handleLogoContextMenu}>
@@ -679,61 +700,58 @@ const Header: React.FC<{ isAnimatingIn: boolean; }> = ({ isAnimatingIn }) => {
                     </div>
                 </>
              )}
-              {/* Logout on Mobile Header */}
-              {isMobile && (
-                  <button onClick={handleLogoutClick} className="text-slate-400 hover:text-white">
-                      <Icon name="logout" />
-                  </button>
-              )}
+             <button
+                onClick={(e) => {
+                    e.stopPropagation();
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setContextMenu({ visible: true, x: rect.right - 190, y: rect.bottom + 8 });
+                }}
+                className="p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-full transition-all duration-200 active:scale-90"
+                title="Settings & Tools"
+            >
+                <Icon name="settings" className="text-xl" />
+            </button>
         </div>
       </header>
       
-      {/* Context Menu */}
+      {/* Premium Context Menu */}
        {contextMenu.visible && (
             <div
                 ref={contextMenuRef}
                 style={{ top: contextMenu.y, left: contextMenu.x }}
-                className="fixed bg-slate-800/70 backdrop-blur-xl border border-slate-700/50 rounded-lg shadow-2xl p-1.5 z-[200] w-56 animate-modal-content text-sm"
+                className="context-menu-popup card"
                 onContextMenu={(e) => e.preventDefault()}
             >
-                <ul className="space-y-1">
-                    <li onClick={handleLogoutClick} className="flex items-center gap-3 px-3 py-1.5 text-slate-200 hover:bg-red-500 hover:text-white rounded-md cursor-pointer transition-colors">
-                        <Icon name="logout" className="w-4 text-center" />
-                        <span>Logout</span>
+                <ul className="list">
+                    <li className="element" onClick={handleCalculatorClick}>
+                        <div className="menu-icon"><Icon name="calculate" /></div>
+                        <p className="label">Calculator</p>
                     </li>
-                    <li onClick={handleCalculatorClick} className="flex items-center gap-3 px-3 py-1.5 text-slate-200 hover:bg-violet-600 hover:text-white rounded-md cursor-pointer transition-colors">
-                        <Icon name="calculate" className="w-4 text-center" />
-                        <span>Calculator</span>
+                    <li className="element" onClick={handleSalesFocusClick}>
+                        <div className="menu-icon"><Icon name={activeSection === 'sales-only' ? 'meeting_room' : 'sensors'} /></div>
+                        <p className="label">{activeSection === 'sales-only' ? 'Exit Focus' : 'Sales Focus'}</p>
                     </li>
-                    <li onClick={handleSalesFocusClick} className={`flex items-center gap-3 px-3 py-1.5 text-slate-200 rounded-md cursor-pointer transition-colors ${activeSection === 'sales-only' ? 'hover:bg-red-500 hover:text-white' : 'hover:bg-emerald-600 hover:text-white'}`}>
-                        {activeSection === 'sales-only' ? (
-                            <>
-                                <Icon name="meeting_room" className="w-4 text-center" />
-                                <span>Exit Focus Mode</span>
-                            </>
-                        ) : (
-                            <>
-                                <Icon name="sensors" className="w-4 text-center" />
-                                <span>Sales Focus Mode</span>
-                            </>
-                        )}
+                </ul>
+                <div className="separator"></div>
+                <ul className="list">
+                    <li className="element" onClick={handleProfileClick}>
+                        <div className="menu-icon"><Icon name="person" /></div>
+                        <p className="label">Profile</p>
                     </li>
                     <li 
+                        className="element" 
                         onMouseEnter={handleSettingsMenuEnter}
                         onMouseLeave={handleSettingsMenuLeave}
-                        className="relative flex justify-between items-center gap-3 px-3 py-1.5 text-slate-200 hover:bg-violet-600 hover:text-white rounded-md cursor-pointer transition-colors"
                     >
-                        <div className="flex items-center gap-3">
-                            <Icon name="settings" className="w-4 text-center" />
-                            <span>Settings</span>
-                        </div>
-                        <Icon name="chevron_right" className="!text-xs" />
-
+                        <div className="menu-icon"><Icon name="settings" /></div>
+                        <p className="label">Settings</p>
+                        {/* Submenu Logic retained but integrated into the new visual structure if needed, 
+                            or rendered adjacent as before. Rendering adjacent for better UX in this tight card */}
                         {isSettingsMenuOpen && (activeSection === 'sales' || activeSection === 'sales-only') && (
                             <div
                                 onMouseEnter={handleSettingsMenuEnter}
                                 onMouseLeave={handleSettingsMenuLeave}
-                                className="absolute left-full top-[-6px] ml-1 bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-lg shadow-2xl p-4 w-80"
+                                className="absolute right-full top-0 mr-2 bg-slate-800/90 backdrop-blur-xl border border-slate-700/50 rounded-lg shadow-2xl p-4 w-72"
                                 onClick={(e) => e.stopPropagation()}
                             >
                                 <h4 className="font-bold text-violet-300 mb-4 text-base">Sales Settings</h4>
@@ -751,6 +769,29 @@ const Header: React.FC<{ isAnimatingIn: boolean; }> = ({ isAnimatingIn }) => {
                                 </div>
                             </div>
                         )}
+                    </li>
+                    <li className="element" onClick={() => {
+                        const elem = document.documentElement;
+                        if (!document.fullscreenElement) {
+                            elem.requestFullscreen().catch(err => console.error(err));
+                        } else {
+                            document.exitFullscreen();
+                        }
+                        closeContextMenu();
+                    }}>
+                        <div className="menu-icon"><Icon name="fullscreen" /></div>
+                        <p className="label">Full Screen</p>
+                    </li>
+                </ul>
+                <div className="separator"></div>
+                <ul className="list">
+                    <li className="element" onClick={logout}>
+                        <div className="menu-icon"><Icon name="logout" /></div>
+                        <p className="label">Log Out</p>
+                    </li>
+                    <li className="element delete" onClick={handleClearData}>
+                        <div className="menu-icon"><Icon name="delete_forever" /></div>
+                        <p className="label">Reset Data</p>
                     </li>
                 </ul>
             </div>
@@ -797,7 +838,7 @@ const SectionTransition: React.FC<{
     useLayoutEffect(() => {
         if (!element) return;
         
-        const headerHeight = 64; // Corresponds to h-16 in Tailwind (4rem)
+        const headerHeight = 64; 
         const firstRect = element.getBoundingClientRect();
         const styles = window.getComputedStyle(element);
         const bgColor = styles.backgroundColor;
@@ -853,70 +894,119 @@ const SectionTransition: React.FC<{
 };
 
 
+const MainContent: React.FC = () => {
+    const { activeView, transitionElement } = useAppContext();
+
+    const renderView = () => {
+        switch (activeView) {
+            case 'welcome': return <Welcome isExiting={!!transitionElement} />;
+            case 'manage-stores': return <ManageStores />;
+            case 'create-bill': return <CreateBill />;
+            case 'your-bills': return <YourBills />;
+            case 'inventory': return <Inventory />;
+            case 'settings': return <Settings />;
+            case 'manage-suppliers': return <ManageSuppliers />;
+            case 'purchase-entry': return <Purchase />;
+            case 'purchase-history': return <PurchaseHistory />;
+            case 'your-purchases': return <YourPurchases />;
+            case 'discount-sheet': return <DiscountSheet />;
+            case 'profit-report': return <ProfitReport />;
+            default: return <Welcome isExiting={!!transitionElement} />;
+        }
+    };
+    return (
+        <main className={`flex-1 animate-main-in`}>
+            {renderView()}
+        </main>
+    )
+}
+
 export default function App() {
     const [appData, setAppData] = useState<AppData | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [notifications, setNotifications] = useState<NotificationState[]>([]);
-    
-    const [currentUser, setCurrentUser] = useState<any | null>(null);
-    const [authExiting, setAuthExiting] = useState(false);
-
     const [importFileContent, setImportFileContent] = useState<string | null>(null);
+    const [user, setUser] = useState<any | null>(null);
+    const [authChecked, setAuthChecked] = useState(false);
+    const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+    const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
     
     const appDataRef = useRef(appData);
-    appDataRef.current = appData;
     const debounceTimeout = useRef<number | null>(null);
 
-    // --- Authentication Listener ---
+    // Listen to Auth State and fetch Profile
     useEffect(() => {
-        const unsubscribe = auth.onAuthStateChanged((user) => {
-            setCurrentUser(user);
-            if (!user) {
-                // User is logged out
-                setAppData(null);
-                setAuthExiting(false);
+        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+            setUser(currentUser);
+            setAuthChecked(true);
+            
+            if (currentUser) {
+                try {
+                    const docRef = doc(db, "users", currentUser.uid);
+                    const docSnap = await getDoc(docRef);
+                    if (docSnap.exists()) {
+                        setUserProfile(docSnap.data() as UserProfile);
+                    } else {
+                        console.warn("User logged in but no profile document found.");
+                        // Could create one here if missing, but Auth flow handles it.
+                    }
+                } catch (e) {
+                    console.error("Failed to fetch user profile", e);
+                }
+            } else {
+                setUserProfile(null);
             }
-            setIsLoading(false);
         });
         return () => unsubscribe();
     }, []);
 
-    // --- Firestore Data Listener ---
-    useEffect(() => {
-        if (currentUser?.uid) {
-            setIsLoading(true);
-            const docRef = db.collection('users').doc(currentUser.uid);
-            const unsubscribe = docRef.onSnapshot((docSnap) => {
-                if (docSnap.exists) {
-                    setAppData(docSnap.data() as AppData);
-                } else {
-                    // This case handles a newly signed-up user where the doc might not exist yet
-                    // The handleSignUp function now creates it, so this is a fallback.
-                    console.warn("User document not found, creating a new one.");
-                    docRef.set(getInitialAppData()).then(() => setAppData(getInitialAppData()));
-                }
-                setIsLoading(false);
-            }, (error: any) => {
-                console.error("Firestore snapshot error:", error);
-                let message = "Could not load data from cloud.";
-                switch (error.code) {
-                    case 'permission-denied':
-                        message = "Error: Permission denied. Please check your login credentials.";
-                        break;
-                    case 'unavailable':
-                        message = "Error: Cannot connect to the server. Please check your internet connection.";
-                        break;
-                }
-                addNotification(message, "error");
-                setIsLoading(false);
-            });
-            return () => unsubscribe();
-        }
-    }, [currentUser?.uid]);
+    // Update User Profile Handler
+    const updateUserProfileHandler = useCallback(async (updates: Partial<UserProfile>) => {
+        if (!user) return;
+        const userRef = doc(db, "users", user.uid);
+        await updateDoc(userRef, updates);
+        setUserProfile(prev => prev ? { ...prev, ...updates } : null);
+    }, [user]);
 
-    // Debounced update function to save data to Firestore
+    // Delete Account Handler
+    const deleteUserAccountHandler = useCallback(async () => {
+        if (!user) return;
+        try {
+            // 1. Delete Firestore Document
+            await deleteDoc(doc(db, "users", user.uid));
+            // 2. Delete Auth User
+            await deleteUser(user);
+            // Logout happens automatically via auth state change
+        } catch (error) {
+            throw error; // Re-throw to be caught by the modal
+        }
+    }, [user]);
+
+    // Keep ref in sync
+    useEffect(() => {
+        appDataRef.current = appData;
+    }, [appData]);
+
+    // --- Local Storage Data Listener ---
+    useEffect(() => {
+        if (!user) return; // Only load data if user is logged in
+        
+        const storedData = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (storedData) {
+            try {
+                setAppData(JSON.parse(storedData));
+            } catch (e) {
+                console.error("Failed to parse local data", e);
+                setAppData(getInitialAppData());
+            }
+        } else {
+            setAppData(getInitialAppData());
+        }
+        setIsLoading(false);
+    }, [user]);
+
     const updateAppData = useCallback((updater: (currentData: AppData) => AppData) => {
-        if (!currentUser || !appDataRef.current) return;
+        if (!appDataRef.current) return;
     
         const newData = updater(appDataRef.current);
         setAppData(newData); // Optimistic UI update
@@ -926,15 +1016,15 @@ export default function App() {
         }
     
         debounceTimeout.current = window.setTimeout(() => {
-            if (currentUser.uid) {
-                const userDocRef = db.collection('users').doc(currentUser.uid);
-                userDocRef.set(newData).catch(err => {
-                    console.error("Failed to save data:", err);
-                    addNotification("Failed to sync data. Please check your connection.", "error");
-                });
+            try {
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newData));
+            } catch (err) {
+                console.error("Failed to save data locally:", err);
+                // We can't do much if local storage fails (quota exceeded usually)
+                // Ideally add notification here but we don't have access to it easily inside this scope unless passed or moved
             }
-        }, 1500); // 1.5 second debounce
-    }, [currentUser]);
+        }, 1000); // 1 second debounce
+    }, []);
 
 
     const startExitAnimation = useCallback((id: number) => {
@@ -956,7 +1046,7 @@ export default function App() {
     }, [startExitAnimation]);
 
     const downloadBackup = useCallback(() => {
-        if (!appData || !currentUser) {
+        if (!appData) {
             addNotification("No data to create a backup from.", "warning");
             return;
         }
@@ -965,7 +1055,7 @@ export default function App() {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `mughal_os_backup_${currentUser.email}_${new Date().toISOString().slice(0, 10)}.json`;
+            a.download = `mughal_os_backup_${new Date().toISOString().slice(0, 10)}.json`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -975,35 +1065,27 @@ export default function App() {
             console.error("Save failed:", error);
             addNotification("Failed to save backup file.", "error");
         }
-    }, [appData, addNotification, currentUser]);
+    }, [appData, addNotification]);
     
     const importData = useCallback(async (jsonData: string) => {
-        if (!currentUser?.uid) {
-            addNotification("No user is logged in to import data for.", "error");
-            return;
-        }
         try {
             let importedData = JSON.parse(jsonData);
             const defaults = getInitialAppData();
-            
             const finalData = { ...defaults, ...importedData };
             
-            const userDocRef = db.collection('users').doc(currentUser.uid);
-            await userDocRef.set(finalData);
+            setAppData(finalData);
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(finalData));
             
             addNotification("Data imported successfully! The app will now use the new data.", "success");
-            // No reload needed due to onSnapshot
         } catch (error: any) {
             console.error("Import failed:", error);
-            let message = "Failed to import data. The file may be corrupted or in the wrong format.";
+            let message = "Failed to import data. The file may be corrupted.";
             if (error instanceof SyntaxError) {
-                message = "Import failed: The file is not valid JSON. Please provide a valid backup file.";
-            } else if (error.code) { // Likely a Firebase error
-                message = "Import failed: Could not save data to the cloud. Please check your connection.";
+                message = "Import failed: The file is not valid JSON.";
             }
             addNotification(message, "error");
         }
-    }, [currentUser, addNotification]);
+    }, [addNotification]);
     
     const initiateImport = useCallback((file: File | null | undefined) => {
         if (file && (file.type === 'application/json' || file.name.endsWith('.json'))) {
@@ -1050,87 +1132,59 @@ export default function App() {
         setImportFileContent(null);
     };
 
-    const clearAllData = useCallback(async () => {
-        if (!currentUser?.uid) return;
+    const clearAllData = useCallback(async (clearSharedData = false) => {
         try {
-            const userDocRef = db.collection('users').doc(currentUser.uid);
-            await userDocRef.set(getInitialAppData());
-            addNotification(`Data for user "${currentUser.email}" has been reset.`, "success");
+            const freshData = getInitialAppData();
+            setAppData(freshData);
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(freshData));
+            
+            addNotification(`All data has been reset.`, "success");
         } catch (error) {
             console.error("Failed to clear data:", error);
-            addNotification(`Failed to clear data. Please check your connection and try again.`, "error");
+            addNotification(`Failed to clear data.`, "error");
         }
-    }, [currentUser]);
+    }, [addNotification]);
 
-    const handleLoginSuccess = () => {
-        setAuthExiting(true);
-    };
-    
     const handleLogout = () => {
-        auth.signOut();
+        signOut(auth).then(() => {
+            setUser(null);
+            setAppData(null); // Clear state on logout
+            setUserProfile(null);
+        });
     };
 
-    const handleSignUp = async (email: string, password: string): Promise<boolean> => {
-        try {
-            const cred = await auth.createUserWithEmailAndPassword(email, password);
-            if (cred.user) {
-                // Create the initial Firestore document for the new user
-                await db.collection("users").doc(cred.user.uid).set(getInitialAppData());
-                return true;
-            } else {
-                addNotification("Sign up failed: No user created.", 'error');
-                return false;
-            }
-        } catch (error: any) {
-            let message = "Sign up failed. Please try again.";
-            if (error.code === 'auth/email-already-in-use') {
-                message = `An account with email "${email}" already exists.`;
-            } else if (error.code === 'auth/invalid-email') {
-                message = 'Please use a valid email address.';
-            } else if (error.code === 'auth/weak-password') {
-                message = 'Password is too weak. Please use at least 6 characters.';
-            } else {
-                 console.error("Unhandled signup error:", error);
-                 message = "An unexpected error occurred during sign up. Please check your connection.";
-            }
-            addNotification(message, 'error');
-            return false;
-        }
-    };
+    // Render Auth Screen if not logged in
+    if (!authChecked) {
+        return <div className="fixed inset-0 flex items-center justify-center bg-slate-900 text-white animate-pulse"><p>Checking Authentication...</p></div>;
+    }
 
-    const isLoggedIn = !!currentUser;
+    if (!user) {
+        return <Auth onLogin={setUser} />;
+    }
 
     return (
         <>
-            {/* The main application is always rendered in the background to preload components, but remains invisible until login. */}
-            <div style={{ visibility: isLoggedIn ? 'visible' : 'hidden' }}>
-                { (isLoading || !appData) && isLoggedIn ? (
-                    <div className="fixed inset-0 flex items-center justify-center bg-slate-900"><p>Loading App Data...</p></div>
-                ) : appData ? (
-                    <AppContext.Provider value={{ downloadBackup, importData, initiateImport, clearAllData, logout: handleLogout } as any}>
-                         <AppProvider
-                            appData={appData}
-                            updateAppData={updateAppData as any}
-                            addNotification={addNotification}
-                            isLoggedIn={isLoggedIn}
-                        >
-                            <GlobalKeyboardShortcuts />
-                        </AppProvider>
-                    </AppContext.Provider>
-                ) : null }
-            </div>
-
-            {/* The authentication screen is only rendered when not logged in. */}
-            {!isLoggedIn && !isLoading && (
-                <div className={`auth-container ${authExiting ? 'animate-auth-exit' : ''}`}>
-                    <Auth 
-                        addNotification={addNotification} 
-                        onLoginSuccess={handleLoginSuccess}
-                        onSignUp={handleSignUp}
-                    />
-                </div>
+            {/* Main App Logic */}
+            { (isLoading || !appData) ? (
+                <div className="fixed inset-0 flex items-center justify-center bg-slate-900 text-white animate-pulse"><p>Loading App Data...</p></div>
+            ) : (
+                <AppContext.Provider value={{ downloadBackup, importData, initiateImport, clearAllData, logout: handleLogout } as any}>
+                     <AppProvider
+                        appData={appData}
+                        updateAppData={updateAppData as any}
+                        addNotification={addNotification}
+                        onLogout={handleLogout}
+                        userProfile={userProfile}
+                        updateUserProfile={updateUserProfileHandler}
+                        deleteUserAccount={deleteUserAccountHandler}
+                        isProfileModalOpen={isProfileModalOpen}
+                        setIsProfileModalOpen={setIsProfileModalOpen}
+                    >
+                        <GlobalKeyboardShortcuts />
+                    </AppProvider>
+                </AppContext.Provider>
             )}
-            
+
             <div className="fixed bottom-6 right-6 z-[201] flex flex-col gap-2 w-60 sm:w-72 text-xs sm:text-sm">
                 {notifications.map(n => 
                     <Notification 
@@ -1147,7 +1201,7 @@ export default function App() {
                     <Icon name="warning" className="text-5xl text-amber-400 mx-auto mb-4" />
                     <h3 className="text-xl font-bold text-slate-100">Overwrite Existing Data?</h3>
                     <p className="text-slate-300 mt-2">
-                        Importing this file will completely replace all of your current data, including bills, stores, suppliers, and inventory settings. 
+                        Importing this file will completely replace all of your current data.
                         This action cannot be undone.
                     </p>
                     <p className="text-slate-300 mt-4">
@@ -1161,31 +1215,4 @@ export default function App() {
             </Modal>
         </>
     );
-}
-
-const MainContent: React.FC<{ isAnimatingIn: boolean; }> = ({ isAnimatingIn }) => {
-    const { activeView, transitionElement } = useAppContext();
-
-    const renderView = () => {
-        switch (activeView) {
-            case 'welcome': return <Welcome isExiting={!!transitionElement} />;
-            case 'manage-stores': return <ManageStores />;
-            case 'create-bill': return <CreateBill />;
-            case 'your-bills': return <YourBills />;
-            case 'inventory': return <Inventory />;
-            case 'settings': return <Settings />;
-            case 'manage-suppliers': return <ManageSuppliers />;
-            case 'purchase-entry': return <Purchase />;
-            case 'purchase-history': return <PurchaseHistory />;
-            case 'your-purchases': return <YourPurchases />;
-            case 'discount-sheet': return <DiscountSheet />;
-            case 'profit-report': return <ProfitReport />;
-            default: return <Welcome isExiting={!!transitionElement} />;
-        }
-    };
-    return (
-        <main className={`flex-1 ${isAnimatingIn ? 'animate-main-in' : ''}`}>
-            {renderView()}
-        </main>
-    )
 }

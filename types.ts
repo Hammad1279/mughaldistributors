@@ -1,12 +1,21 @@
 
 
 
+
 import React from 'react';
 
 // --- USER AUTHENTICATION ---
 export interface User {
   id: string; // Firebase UID
   username: string; // This is the email used for auth
+}
+
+export interface UserProfile {
+  uid: string;
+  name: string;
+  email: string;
+  photoURL: string;
+  createdAt: string;
 }
 
 // --- LOCAL STORAGE DATA STRUCTURE (PER-USER) ---
@@ -224,6 +233,13 @@ export interface AppContextType {
     editingPurchaseId: number | null; setEditingPurchaseId: React.Dispatch<React.SetStateAction<number | null>>;
     billFilterStoreID: string | null;
     
+    // User Profile
+    userProfile: UserProfile | null;
+    updateUserProfile: (updates: Partial<UserProfile>) => Promise<void>;
+    deleteUserAccount: () => Promise<void>;
+    isProfileModalOpen: boolean;
+    setIsProfileModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
+
     // UI
     addNotification: (message: string, type?: NotificationType) => void;
     activeView: AppView;

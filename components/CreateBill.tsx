@@ -879,7 +879,7 @@ export default function CreateBill() {
                     )}
                 </header>
                 
-                <div ref={gridContainerRef} className="classic-grid-container custom-scrollbar">
+                <div ref={gridContainerRef} className={`classic-grid-container custom-scrollbar ${!isBillingActive ? '!border-0 !bg-slate-950 !rounded-none shadow-none -m-2 w-[calc(100%+16px)] h-[calc(100%+16px)]' : ''}`}>
                     { isBillingActive ? (
                         <table className="classic-grid">
                             <thead>
@@ -954,10 +954,16 @@ export default function CreateBill() {
                             </tbody>
                         </table>
                     ) : (
-                        <div className="flex flex-col items-center justify-center text-center p-10 text-slate-400 h-full">
-                            <Icon name="no_store" className="text-6xl mb-4 text-slate-500"/>
-                            <h3 className="text-2xl font-semibold text-slate-300">Select a Store to Begin</h3>
-                            <p className="mt-2 max-w-sm">Please choose a store from the 'Stores' section or click the 'Select a Store' button above.</p>
+                        <div className="flex flex-col items-center justify-center h-full w-full select-none opacity-60">
+                             <div className="flex items-end gap-4 mb-6">
+                                <span className="text-[120px] font-bold text-slate-800 leading-[0.8] tracking-tighter">NO</span>
+                                <div className="h-3 w-24 bg-slate-800 rounded-full mb-6"></div>
+                                <Icon name="storefront" className="text-[100px] text-slate-800 mb-2" />
+                             </div>
+                             <h3 className="text-2xl font-bold text-slate-400 mb-3">Select a Store to Begin</h3>
+                             <p className="text-slate-500 max-w-md text-center leading-relaxed">
+                                Please choose a store from the 'Stores' section or <br/> click the 'Select a Store' button above.
+                             </p>
                         </div>
                     )}
                 </div>

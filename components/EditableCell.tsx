@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useRef } from 'react';
 import { CellData } from '../types';
 
@@ -54,17 +53,19 @@ export const EditableCell: React.FC<EditableCellProps> = ({
         onStartEditing();
     };
     
-    const cellStyle: React.CSSProperties = {
+    // We remove explicit React.CSSProperties type to allow direct property access
+    // while casting specific properties to match React's CSS types
+    const cellStyle = {
         fontWeight: cellData.style?.fontWeight || 'normal',
         fontStyle: cellData.style?.fontStyle || 'normal',
         textDecoration: cellData.style?.textDecoration || 'none',
-        textAlign: cellData.style?.textAlign || (typeof cellData.value === 'number' ? 'right' : 'left'),
+        textAlign: (cellData.style?.textAlign || (typeof cellData.value === 'number' ? 'right' : 'left')) as React.CSSProperties['textAlign'],
         verticalAlign: cellData.style?.verticalAlign || 'middle',
         backgroundColor: cellData.style?.backgroundColor,
         color: cellData.style?.color,
         fontFamily: cellData.style?.fontFamily || 'Calibri',
         fontSize: cellData.style?.fontSize ? `${cellData.style.fontSize}pt` : '11pt',
-        whiteSpace: cellData.style?.whiteSpace || 'nowrap',
+        whiteSpace: (cellData.style?.whiteSpace || 'nowrap') as React.CSSProperties['whiteSpace'],
         textIndent: cellData.style?.textIndent,
     };
     
