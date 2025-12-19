@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { auth, db } from '../firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
@@ -33,12 +32,21 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         setIsLoading(true);
         setError(null);
 
+        const cleanEmail = email.trim();
+        const cleanPassword = password.trim();
+
+        if (!cleanEmail || !cleanPassword) {
+            setError("Email and Password are required");
+            setIsLoading(false);
+            return;
+        }
+
         try {
             if (isSignup) {
                 if (password !== repeatPassword) {
                     throw new Error("Passwords do not match");
                 }
-                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPassword);
                 const user = userCredential.user;
                 
                 await updateProfile(user, { displayName: name });
@@ -47,15 +55,14 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 await setDoc(doc(db, "users", user.uid), {
                     uid: user.uid,
                     name: name,
-                    email: email,
+                    email: cleanEmail,
                     photoURL: photoFileName || '',
                     createdAt: new Date().toISOString()
                 });
 
                 setSuccess(true);
-                // Small delay to show success animation if we add one, or just proceed
             } else {
-                const userCredential = await signInWithEmailAndPassword(auth, email, password);
+                const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, cleanPassword);
                 const user = userCredential.user;
 
                 // Check if user document exists, if not create it (sync logic)
@@ -76,12 +83,17 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             }
         } catch (err: any) {
             console.error("Auth Error:", err);
+            // Firebase Auth v10 uses a unified invalid-credential code for better security
             if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
-                setError("Password or Email Incorrect");
+                setError("Invalid email or password. Please try again.");
             } else if (err.code === 'auth/email-already-in-use') {
-                setError("User already exists. Sign in?");
+                setError("User already exists. Sign in instead?");
+            } else if (err.code === 'auth/invalid-email') {
+                setError("The email address is not valid.");
+            } else if (err.code === 'auth/too-many-requests') {
+                setError("Too many failed attempts. Try again later.");
             } else {
-                setError(err.message || "An error occurred");
+                setError(err.message || "An authentication error occurred.");
             }
             setSuccess(false);
         } finally {
@@ -194,7 +206,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                                     value={repeatPassword}
                                     onChange={(e) => setRepeatPassword(e.target.value)}
                                 />
-                                {/* Placeholder for file upload */}
                                 <label className="flip-card__input flex items-center text-slate-400 text-sm cursor-pointer truncate">
                                     <Icon name="upload_file" className="mr-2" /> 
                                     <span className="truncate">{photoFileName || "Upload Profile Photo (Optional)"}</span>
