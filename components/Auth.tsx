@@ -1,237 +1,163 @@
-import React, { useState } from 'react';
-import { auth, db } from '../firebase';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { Icon } from './ui';
+
+import React, { useState, useEffect } from 'react';
+import { NotificationType, User } from '../types';
 
 interface AuthProps {
-    onLogin: (user: any) => void;
+    addNotification: (message: string, type?: NotificationType) => void;
+    onLoginSuccess: (username: string) => void;
+    onSignUp: (user: Omit<User, 'id'>) => boolean;
+    users: User[];
 }
 
-const Auth: React.FC<AuthProps> = ({ onLogin }) => {
-    const [isSignup, setIsSignup] = useState(false);
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [success, setSuccess] = useState(false);
+const LAST_USER_KEY = 'mughal_os_last_user';
 
-    // Form States
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [name, setName] = useState('');
-    const [repeatPassword, setRepeatPassword] = useState('');
-    const [photoFileName, setPhotoFileName] = useState('');
-    
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            setPhotoFileName(e.target.files[0].name);
+const Auth: React.FC<AuthProps> = ({ addNotification, onLoginSuccess, onSignUp, users }) => {
+    const [isSignUp, setIsSignUp] = useState(false);
+
+    // Login Form State
+    const [loginUsername, setLoginUsername] = useState('');
+    const [loginPassword, setLoginPassword] = useState('');
+    const [loginSuccess, setLoginSuccess] = useState(false);
+
+    // Sign Up Form State
+    const [signUpUsername, setSignUpUsername] = useState('');
+    const [signUpPassword, setSignUpPassword] = useState('');
+    const [signUpConfirmPassword, setSignUpConfirmPassword] = useState('');
+
+    useEffect(() => {
+        const lastUser = localStorage.getItem(LAST_USER_KEY);
+        if(lastUser) {
+            setLoginUsername(lastUser);
         }
-    };
+    }, []);
 
-    const handleAuthAction = async (e: React.FormEvent) => {
+    const handleLogin = (e: React.FormEvent) => {
         e.preventDefault();
-        setIsLoading(true);
-        setError(null);
-
-        const cleanEmail = email.trim();
-        const cleanPassword = password.trim();
-
-        if (!cleanEmail || !cleanPassword) {
-            setError("Email and Password are required");
-            setIsLoading(false);
+        if (!loginUsername.trim() || !loginPassword.trim()) {
+            addNotification('Please enter username and password.', 'warning');
             return;
         }
 
-        try {
-            if (isSignup) {
-                if (password !== repeatPassword) {
-                    throw new Error("Passwords do not match");
-                }
-                const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPassword);
-                const user = userCredential.user;
-                
-                await updateProfile(user, { displayName: name });
-                
-                // Create user document in Firestore
-                await setDoc(doc(db, "users", user.uid), {
-                    uid: user.uid,
-                    name: name,
-                    email: cleanEmail,
-                    photoURL: photoFileName || '',
-                    createdAt: new Date().toISOString()
-                });
-
-                setSuccess(true);
-            } else {
-                const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, cleanPassword);
-                const user = userCredential.user;
-
-                // Check if user document exists, if not create it (sync logic)
-                const userDocRef = doc(db, "users", user.uid);
-                const docSnap = await getDoc(userDocRef);
-
-                if (!docSnap.exists()) {
-                    await setDoc(userDocRef, {
-                        uid: user.uid,
-                        name: user.displayName || 'Unknown User',
-                        email: user.email || '',
-                        photoURL: '',
-                        createdAt: new Date().toISOString()
-                    });
-                }
-
-                setSuccess(true);
-            }
-        } catch (err: any) {
-            console.error("Auth Error:", err);
-            // Firebase Auth v10 uses a unified invalid-credential code for better security
-            if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
-                setError("Invalid email or password. Please try again.");
-            } else if (err.code === 'auth/email-already-in-use') {
-                setError("User already exists. Sign in instead?");
-            } else if (err.code === 'auth/invalid-email') {
-                setError("The email address is not valid.");
-            } else if (err.code === 'auth/too-many-requests') {
-                setError("Too many failed attempts. Try again later.");
-            } else {
-                setError(err.message || "An authentication error occurred.");
-            }
-            setSuccess(false);
-        } finally {
-            setIsLoading(false);
+        const user = users.find(u => u.username.toLowerCase() === loginUsername.trim().toLowerCase());
+        
+        // Use btoa for basic password obfuscation, atob to decode
+        if (user && atob(user.password) === loginPassword) {
+            setLoginSuccess(true);
+            setTimeout(() => {
+                onLoginSuccess(user.username);
+            }, 1000);
+        } else {
+            addNotification('Invalid username or password.', 'error');
         }
     };
 
-    const toggleMode = () => {
-        setIsSignup(!isSignup);
-        setError(null);
-        setSuccess(false);
-        // Reset fields
-        setEmail('');
-        setPassword('');
-        setName('');
-        setRepeatPassword('');
-        setPhotoFileName('');
+    const handleSignUp = (e: React.FormEvent) => {
+        e.preventDefault();
+        const trimmedUsername = signUpUsername.trim();
+        if (!trimmedUsername || !signUpPassword.trim()) {
+            addNotification('Username and password cannot be empty.', 'warning');
+            return;
+        }
+        if (signUpPassword !== signUpConfirmPassword) {
+            addNotification('Passwords do not match.', 'error');
+            return;
+        }
+        
+        const success = onSignUp({
+            username: trimmedUsername,
+            password: btoa(signUpPassword) // Store encoded password
+        });
+
+        if (success) {
+            addNotification('Account created successfully!', 'success');
+            setSignUpUsername('');
+            setSignUpPassword('');
+            setSignUpConfirmPassword('');
+            setIsSignUp(false); // Flip back to login form
+        } else {
+            addNotification(`Username "${trimmedUsername}" is already taken.`, 'error');
+        }
     };
 
     return (
-        <div className={`auth-container ${success ? 'animate-auth-exit' : ''}`}>
-            <div className="auth-wrapper">
-                <div className="card-switch">
-                    <input 
-                        type="checkbox" 
-                        className="toggle" 
-                        id="auth-toggle" 
-                        checked={isSignup} 
-                        onChange={toggleMode}
-                    />
-                    <label className="switch" htmlFor="auth-toggle">
-                        <span className="slider"></span>
-                        <span className="card-side"></span>
-                    </label>
-                    
-                    <div className="flip-card__inner">
-                        {/* Login Side (Front) */}
-                        <div className="flip-card__front">
-                            <div className="title">Log in</div>
-                            <form className="flip-card__form" onSubmit={handleAuthAction}>
-                                <input 
-                                    className="flip-card__input" 
-                                    name="email" 
-                                    placeholder="Email" 
-                                    type="email" 
-                                    required 
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                />
-                                <input 
-                                    className="flip-card__input" 
-                                    name="password" 
-                                    placeholder="Password" 
-                                    type="password" 
-                                    required 
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                />
-                                {error && !isSignup && (
-                                    <div className="text-red-400 text-sm font-semibold px-4 text-center">
-                                        {error}
-                                    </div>
-                                )}
-                                <button className={`flip-card__btn ${success ? 'success' : ''}`} type="submit" disabled={isLoading}>
-                                    <span className="btn-text">{isLoading ? '...' : 'Let\'s go!'}</span>
-                                    <svg className="checkmark-svg" viewBox="0 0 52 52">
-                                        <circle className="checkmark-circle" cx="26" cy="26" r="25" fill="none"/>
-                                        <path className="checkmark-path" fill="none" stroke="white" strokeWidth="5" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
-                                    </svg>
-                                </button>
-                            </form>
-                        </div>
-
-                        {/* Signup Side (Back) */}
-                        <div className="flip-card__back">
-                            <div className="title">Sign up</div>
-                            <form className="flip-card__form" onSubmit={handleAuthAction}>
-                                <input 
-                                    className="flip-card__input" 
-                                    placeholder="Name" 
-                                    type="text" 
-                                    required 
-                                    value={name}
-                                    onChange={(e) => setName(e.target.value)}
-                                />
-                                <input 
-                                    className="flip-card__input" 
-                                    name="email" 
-                                    placeholder="Email" 
-                                    type="email" 
-                                    required 
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                />
-                                <input 
-                                    className="flip-card__input" 
-                                    name="password" 
-                                    placeholder="Password" 
-                                    type="password" 
-                                    required 
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                />
-                                <input 
-                                    className="flip-card__input" 
-                                    name="repeat_password" 
-                                    placeholder="Repeat Password" 
-                                    type="password" 
-                                    required 
-                                    value={repeatPassword}
-                                    onChange={(e) => setRepeatPassword(e.target.value)}
-                                />
-                                <label className="flip-card__input flex items-center text-slate-400 text-sm cursor-pointer truncate">
-                                    <Icon name="upload_file" className="mr-2" /> 
-                                    <span className="truncate">{photoFileName || "Upload Profile Photo (Optional)"}</span>
-                                    <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
-                                </label>
-
-                                {error && isSignup && (
-                                    <div className="text-red-400 text-sm font-semibold px-4 text-center cursor-pointer" onClick={() => {
-                                        if(error.includes("User already exists")) toggleMode();
-                                    }}>
-                                        {error}
-                                    </div>
-                                )}
-                                <button className={`flip-card__btn ${success ? 'success' : ''}`} type="submit" disabled={isLoading}>
-                                    <span className="btn-text">{isLoading ? '...' : 'Confirm!'}</span>
-                                    <svg className="checkmark-svg" viewBox="0 0 52 52">
-                                        <circle className="checkmark-circle" cx="26" cy="26" r="25" fill="none"/>
-                                        <path className="checkmark-path" fill="none" stroke="white" strokeWidth="5" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
-                                    </svg>
-                                </button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <div className="auth-wrapper">
+            <div className="card-switch">
+                <input 
+                    id="auth-toggle"
+                    type="checkbox" 
+                    className="toggle" 
+                    checked={isSignUp} 
+                    onChange={() => setIsSignUp(prev => !prev)} 
+                />
+                <label htmlFor="auth-toggle" className="switch">
+                   <span className="slider"></span>
+                   <span className="card-side"></span>
+                </label>
+               <div className="flip-card__inner">
+                  <div className="flip-card__front">
+                     <div className="title">Log in</div>
+                     <form className="flip-card__form" onSubmit={handleLogin}>
+                        <input 
+                            className="flip-card__input" 
+                            name="username" 
+                            placeholder="Username" 
+                            type="text" 
+                            value={loginUsername}
+                            onChange={(e) => setLoginUsername(e.target.value)}
+                            required
+                        />
+                        <input 
+                            className="flip-card__input" 
+                            name="password" 
+                            placeholder="Password" 
+                            type="password" 
+                            value={loginPassword}
+                            onChange={(e) => setLoginPassword(e.target.value)}
+                            required
+                        />
+                        <button type="submit" className={`flip-card__btn ${loginSuccess ? 'success' : ''}`} disabled={loginSuccess}>
+                            <span className="btn-text">Login</span>
+                            <svg className="checkmark-svg" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="white">
+                                <path className="checkmark-path" strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                            </svg>
+                        </button>
+                     </form>
+                  </div>
+                  <div className="flip-card__back">
+                     <div className="title">Sign up</div>
+                     <form className="flip-card__form" onSubmit={handleSignUp}>
+                        <input 
+                            className="flip-card__input" 
+                            placeholder="Username" 
+                            type="text"
+                            value={signUpUsername}
+                            onChange={(e) => setSignUpUsername(e.target.value)}
+                            required
+                        />
+                        <input 
+                            className="flip-card__input" 
+                            name="password" 
+                            placeholder="Password" 
+                            type="password" 
+                            value={signUpPassword}
+                            onChange={(e) => setSignUpPassword(e.target.value)}
+                            required
+                        />
+                         <input 
+                            className="flip-card__input" 
+                            name="confirm_password" 
+                            placeholder="Confirm Password" 
+                            type="password" 
+                            value={signUpConfirmPassword}
+                            onChange={(e) => setSignUpConfirmPassword(e.target.value)}
+                            required
+                        />
+                        <button type="submit" className="flip-card__btn">Sign Up</button>
+                     </form>
+                  </div>
+               </div>
+            </div>   
+       </div>
     );
 };
 

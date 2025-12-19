@@ -1,8 +1,11 @@
+
+
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useAppContext } from '../App';
-import { Medicine, PurchaseItem, PurchaseRowData } from '../types';
+import { Medicine, FinalizedPurchase, PurchaseItem as FinalizedPurchaseItem, PurchaseRowData } from '../types';
 import { Card, Button, Icon } from './ui';
 import PurchaseRow from './PurchaseRow';
+import { ProductModal } from './ProductModal';
 
 declare var Fuse: any;
 
@@ -184,24 +187,33 @@ export default function Purchase() {
     }, []);
 
     const handleDataChange = useCallback((medId: string, field: keyof PurchaseRowData, value: string | number, targetElement?: HTMLElement) => {
+        // Step 1: Update the item's specific data in the purchase cart.
         setPurchaseCart(prev => {
             const currentData = prev[medId] || { srch: '', quantity: 0, rate: 0, discount: 0, batchNo: '' };
             const newData = { ...currentData, [field]: value };
-            
-            const isEffectivelyEmpty = !newData.quantity && !newData.rate && !newData.batchNo && !newData.srch && !newData.discount;
-            if (isEffectivelyEmpty) {
-                const { [medId]: _, ...rest } = prev;
-                return rest;
-            }
             return { ...prev, [medId]: newData };
         });
+        
+        // Step 2: If the quantity is now zero or less, remove the item from the cart.
+        if (field === 'quantity' && Number(value) <= 0) {
+            setPurchaseCart(prev => {
+                const { [medId]: _, ...rest } = prev;
+                return rest;
+            });
+            
+            const med = medicines.find(m => m.id === medId);
+            if (med) {
+                addNotification(`"${med.name}" removed from purchase.`, 'info');
+            }
+        }
 
+        // Search logic
         if (field === 'srch' && typeof value === 'string') {
             const newSearchTerm = value.trim();
             if (newSearchTerm && targetElement) {
                 const results = medicineFuse.current.search(newSearchTerm).map((r: any) => r.item).slice(0, 5);
                 const searchResults: (Medicine | { id: 'add_new', name: string })[] = [...results];
-                if (!results.some((r: any) => r.name.toLowerCase() === newSearchTerm.toLowerCase())) {
+                if (!results.some(r => r.name.toLowerCase() === newSearchTerm.toLowerCase())) {
                     searchResults.push({ id: 'add_new', name: newSearchTerm });
                 }
                 
@@ -221,9 +233,9 @@ export default function Purchase() {
                 setActiveSearch(null);
             }
         }
-    }, [setPurchaseCart]);
+    }, [setPurchaseCart, medicines, addNotification]);
     
-    const handleSelectSearchResult = useCallback(async (item: Medicine | { id: 'add_new'; name: string }, _rowId: string) => {
+    const handleSelectSearchResult = useCallback(async (item: Medicine | { id: 'add_new'; name: string }, rowId: string) => {
         setActiveSearch(null);
         setSearchTerm(''); 
 
@@ -360,11 +372,10 @@ export default function Purchase() {
     const handlePostPurchase = useCallback(async () => {
         if (!activeSupplier) { addNotification("No supplier selected.", "error"); return; }
 
-        // FIX: Add explicit types to filter/map callbacks to resolve TS errors where `data` was `unknown`.
-        // Also removed a redundant .map() call for efficiency.
-        const itemsForPurchase: PurchaseItem[] = Object.entries(purchaseCart)
-            .filter(([, data]: [string, PurchaseRowData]) => data.quantity > 0 && data.rate > 0)
-            .map(([medId, data]: [string, PurchaseRowData]) => {
+        const itemsForPurchase: FinalizedPurchaseItem[] = Object.entries(purchaseCart)
+            .map(([medId, data]) => ({ medId, data }))
+            .filter(({ data }) => data.quantity > 0 && data.rate > 0)
+            .map(({medId, data}) => {
                 const med = medicines.find(m => m.id === medId)!;
                 return {
                     medicineId: med.id,
@@ -556,7 +567,7 @@ export default function Purchase() {
             >
                 <header className="classic-toolbar">
                     <input type="text" className="classic-toolbar-input" style={{ width: '80px', textAlign:'center' }} readOnly value={`#${purchaseId}`} title="Purchase ID"/>
-                    <div className="font-semibold text-lg text-slate-300 ml-4">
+                    <div className="font-semibold text-lg text-slate-300 ml-4 purchase-info">
                         {isEditing ? (
                             <>Editing Purchase: <span className="text-amber-400">#{editingPurchaseId}</span></>
                         ) : (
@@ -565,7 +576,7 @@ export default function Purchase() {
                     </div>
 
                     {purchaseCartOrder.length > 0 && (
-                        <div className="flex items-center gap-2 ml-4">
+                        <div className="flex items-center gap-2 md:ml-4 bulk-qty-wrapper">
                             <label htmlFor="bulk-qty" className="text-sm font-medium text-slate-400">Bulk Qty:</label>
                             <input
                                 id="bulk-qty"
@@ -592,7 +603,7 @@ export default function Purchase() {
                         </div>
                     )}
                     
-                    <div className="flex-grow"></div>
+                    <div className="flex-grow hidden md:block"></div>
                     <button className="classic-toolbar-button" onClick={handlePostPurchase}>{isEditing ? 'Update Purchase' : 'Post Purchase'}</button>
                     {isCancelling ? (
                         <button
@@ -614,7 +625,7 @@ export default function Purchase() {
                 </header>
 
                 <div ref={gridContainerRef} className="classic-grid-container custom-scrollbar">
-                    <table className="classic-grid">
+                    <table className="classic-grid responsive-table">
                         <thead>
                             <tr>
                                 <th style={{ width: '45%' }}>Product</th>

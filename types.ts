@@ -1,21 +1,12 @@
 
 
-
-
 import React from 'react';
 
 // --- USER AUTHENTICATION ---
 export interface User {
-  id: string; // Firebase UID
-  username: string; // This is the email used for auth
-}
-
-export interface UserProfile {
-  uid: string;
-  name: string;
-  email: string;
-  photoURL: string;
-  createdAt: string;
+  id: string;
+  username: string;
+  password: string; // This will be stored base64 encoded, not plaintext.
 }
 
 // --- LOCAL STORAGE DATA STRUCTURE (PER-USER) ---
@@ -176,7 +167,7 @@ export interface CellStyle {
   fontWeight?: string | number;
   fontStyle?: string;
   textDecoration?: string;
-  textAlign?: 'left' | 'right' | 'center' | 'justify';
+  textAlign?: string;
   verticalAlign?: string | number;
   backgroundColor?: string;
   color?: string;
@@ -208,8 +199,6 @@ export interface ChartConfig {
 
 // --- APP CONTEXT ---
 export interface AppContextType {
-    isMobile: boolean; // New flag for responsive logic
-
     // Data collections (from app state)
     medicines: Medicine[];
     medicalStores: MedicalStore[];
@@ -233,13 +222,6 @@ export interface AppContextType {
     editingPurchaseId: number | null; setEditingPurchaseId: React.Dispatch<React.SetStateAction<number | null>>;
     billFilterStoreID: string | null;
     
-    // User Profile
-    userProfile: UserProfile | null;
-    updateUserProfile: (updates: Partial<UserProfile>) => Promise<void>;
-    deleteUserAccount: () => Promise<void>;
-    isProfileModalOpen: boolean;
-    setIsProfileModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
-
     // UI
     addNotification: (message: string, type?: NotificationType) => void;
     activeView: AppView;

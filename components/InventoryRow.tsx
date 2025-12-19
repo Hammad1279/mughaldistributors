@@ -10,12 +10,12 @@ interface InventoryRowProps {
 const InventoryRow: React.FC<InventoryRowProps> = ({ med, onEdit, onDelete }) => {
     return (
         <tr className="hover:bg-slate-700/30 transition-colors">
-            <td className="p-4 font-medium text-slate-100">{med.name}</td>
-            <td className={`p-4 font-semibold ${med.price ? 'text-emerald-400' : 'text-red-400'}`}>{med.price ? `Rs ${med.price.toFixed(2)}` : 'Not Set'}</td>
-            <td className="p-4 text-slate-300">{med.discount != null ? `${med.discount}%` : 'N/A'}</td>
-            <td className="p-4 text-slate-300">{med.saleDiscount != null ? `${med.saleDiscount}%` : 'N/A'}</td>
-            <td className="p-4 text-slate-400">{med.batchNo || 'N/A'}</td>
-            <td className="p-4">
+            <td className="p-4 font-medium text-slate-100 inv-name">{med.name}</td>
+            <td data-label="Price (MRP)" className={`p-4 font-semibold ${med.price ? 'text-emerald-400' : 'text-red-400'}`}>{med.price ? `Rs ${med.price.toFixed(2)}` : 'Not Set'}</td>
+            <td data-label="Purchase Disc. %" className="p-4 text-slate-300">{med.discount != null ? `${med.discount}%` : 'N/A'}</td>
+            <td data-label="Sale Disc. %" className="p-4 text-slate-300">{med.saleDiscount != null ? `${med.saleDiscount}%` : 'N/A'}</td>
+            <td data-label="Batch No." className="p-4 text-slate-400">{med.batchNo || 'N/A'}</td>
+            <td data-label="Actions" className="p-4">
                 <div className="flex gap-4">
                     <button onClick={() => onEdit(med)} className="text-violet-400 hover:text-violet-300 font-medium">Edit</button>
                     <button onClick={() => onDelete(med.id)} className="text-red-400 hover:text-red-300 font-medium">Delete</button>
