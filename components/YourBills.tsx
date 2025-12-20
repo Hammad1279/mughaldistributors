@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState } from 'react';
 import { useAppContext } from '../App';
 import { FinalizedBill } from '../types';
@@ -29,7 +30,7 @@ export default function YourBills() {
         if (!searchTerm.trim()) return sorted;
         
         const fuse = new Fuse(sorted, { keys: ['storeName', 'billNo'], threshold: 0.3, ignoreLocation: true });
-        return fuse.search(searchTerm.trim().replace('#', '')).map((result: any) => result.item);
+        return fuse.search(searchTerm.trim().replace('#', '')).map((result: any) => result.item as FinalizedBill);
     }, [searchTerm, finalizedBills, billFilterStoreID]);
 
     const handleDownload = (bill: FinalizedBill) => {

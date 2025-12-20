@@ -1,117 +1,119 @@
-import React, { useRef } from 'react';
+
+import React from 'react';
 import { useAppContext } from '../App';
-import { Card, Icon } from './ui';
-
-interface WelcomeCardProps {
-    title: string;
-    description: string;
-    icon: string;
-    onClick: (e: React.MouseEvent<HTMLDivElement>) => void;
-    colorClass: string;
-    className?: string;
-    style?: React.CSSProperties;
-}
-
-const WelcomeCard: React.FC<WelcomeCardProps> = ({ title, description, icon, onClick, colorClass, className, style }) => {
-    const magneticContentRef = useRef<HTMLDivElement>(null);
-    const animationFrameId = useRef<number | null>(null);
-
-    const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-        const card = e.currentTarget;
-        const content = magneticContentRef.current;
-        if (!content) return;
-
-        if (animationFrameId.current) {
-            cancelAnimationFrame(animationFrameId.current);
-        }
-
-        animationFrameId.current = requestAnimationFrame(() => {
-            const rect = card.getBoundingClientRect();
-            const cardCenterX = rect.width / 2;
-            const cardCenterY = rect.height / 2;
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
-            const deltaX = mouseX - cardCenterX;
-            const deltaY = mouseY - cardCenterY;
-            const pullFactor = 0.2;
-            const translateX = deltaX * pullFactor;
-            const translateY = deltaY * pullFactor;
-            content.style.transform = `translate(${translateX}px, ${translateY}px)`;
-        });
-    };
-
-    const handleMouseLeave = () => {
-        const content = magneticContentRef.current;
-        if (animationFrameId.current) {
-            cancelAnimationFrame(animationFrameId.current);
-        }
-        if (content) {
-            content.style.transform = 'translate(0px, 0px)';
-        }
-    };
-
-    return (
-        <Card
-            onClick={onClick}
-            onMouseMove={handleMouseMove}
-            onMouseLeave={handleMouseLeave}
-            className={`p-8 cursor-pointer group hover:bg-slate-700/50 transition-all duration-300 transform hover:-translate-y-1 hover:shadow-2xl ${colorClass} ${className}`}
-            style={style}
-        >
-            <div 
-                ref={magneticContentRef}
-                className="magnetic-content"
-            >
-                <div className="flex flex-col items-center text-center">
-                    <div className="mb-6">
-                        <Icon name={icon} className="text-6xl text-slate-300 group-hover:scale-110 transition-transform duration-300" />
-                    </div>
-                    <h2 className="text-3xl font-bold text-white mb-2">{title}</h2>
-                    <p className="text-slate-400 max-w-xs">{description}</p>
-                </div>
-            </div>
-        </Card>
-    );
-};
+import { Icon } from './ui';
+import DarkVeil from './DarkVeil';
+import TiltedCard from './TiltedCard';
+import ClickSpark from './ClickSpark';
+import GradientText from './GradientText';
 
 export default function Welcome({ isExiting }: { isExiting?: boolean }) {
     const { navigateToSection } = useAppContext();
 
     return (
-        <div className={`h-full flex flex-col items-center justify-center p-4 md:p-6 animate-fade-in space-y-8 ${isExiting ? 'welcome-is-exiting' : ''}`}>
-            <div className="text-center">
-                <h1 className="text-5xl font-extrabold text-white tracking-tight">Welcome to Mughal OS</h1>
-                <p className="text-xl text-slate-400 mt-2">Select an operation to begin.</p>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-6xl">
-                <WelcomeCard
-                    title="Sales"
-                    description="Manage customer stores, create new bills, and view past invoices."
-                    icon="point_of_sale"
-                    onClick={(e) => navigateToSection('sales', e.currentTarget)}
-                    colorClass="hover:border-emerald-500/50"
-                    className="animate-card-enter"
-                    style={{ animationDelay: '100ms' }}
-                />
-                <WelcomeCard
-                    title="Purchase"
-                    description="Manage suppliers, enter new stock purchases, and view purchase history."
-                    icon="local_shipping"
-                    onClick={(e) => navigateToSection('purchase', e.currentTarget)}
-                    colorClass="hover:border-violet-500/50"
-                    className="animate-card-enter"
-                    style={{ animationDelay: '200ms' }}
-                />
-                <WelcomeCard
-                    title="Reports"
-                    description="View sales charts, performance metrics, and business overviews."
-                    icon="pie_chart"
-                    onClick={(e) => navigateToSection('reports', e.currentTarget)}
-                    colorClass="hover:border-blue-500/50"
-                    className="animate-card-enter"
-                    style={{ animationDelay: '300ms' }}
-                />
-            </div>
+        <div className={`relative h-full w-full overflow-hidden ${isExiting ? 'welcome-is-exiting' : ''}`}>
+            <ClickSpark
+                sparkColor="#a78bfa"
+                sparkSize={12}
+                sparkRadius={25}
+                sparkCount={8}
+                duration={400}
+            >
+                <div className="absolute inset-0 z-0">
+                    <DarkVeil />
+                </div>
+                <div className="relative z-10 h-full flex flex-col items-center justify-center p-4 md:p-6 animate-fade-in space-y-8">
+                    <div className="text-center cursor-default flex flex-col items-center">
+                        <div className="flex flex-col md:flex-row items-center gap-2 md:gap-3 mb-2">
+                            <span className="text-5xl md:text-6xl font-extrabold tracking-tight font-['Outfit'] text-white">
+                                Welcome to
+                            </span>
+                            <GradientText 
+                                colors={['#a78bfa', '#c4b5fd', '#f472b6', '#c4b5fd', '#a78bfa']} 
+                                animationSpeed={6}
+                                className="text-5xl md:text-6xl font-extrabold tracking-tight font-['Outfit']"
+                            >
+                                Mughal OS
+                            </GradientText>
+                        </div>
+                        <div className="text-xl text-slate-400 mt-2 font-['Outfit']">
+                            Select an operation to begin.
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-6xl place-items-center">
+                        
+                        <TiltedCard
+                            containerHeight="300px"
+                            containerWidth="300px"
+                            imageHeight="300px"
+                            imageWidth="300px"
+                            rotateAmplitude={12}
+                            scaleOnHover={1.05}
+                            showMobileWarning={false}
+                            showTooltip={false}
+                            displayOverlayContent={true}
+                            imgClassName="bg-gradient-to-br from-slate-800/80 to-slate-900/90 border border-emerald-500/30 shadow-2xl backdrop-blur-md"
+                            onClick={(e) => navigateToSection('sales', e.currentTarget)}
+                            className="animate-card-enter cursor-pointer"
+                            style={{ animationDelay: '100ms' }}
+                            overlayContent={
+                                <div className="text-center p-6 flex flex-col items-center h-full justify-center">
+                                    <Icon name="point_of_sale" className="text-6xl text-emerald-400 mb-4 drop-shadow-[0_0_15px_rgba(52,211,153,0.5)]" />
+                                    <h2 className="text-3xl font-bold text-white mb-2">Sales</h2>
+                                    <p className="text-slate-300 text-sm">Manage customer stores, create new bills, and view past invoices.</p>
+                                </div>
+                            }
+                        />
+
+                        <TiltedCard
+                            containerHeight="300px"
+                            containerWidth="300px"
+                            imageHeight="300px"
+                            imageWidth="300px"
+                            rotateAmplitude={12}
+                            scaleOnHover={1.05}
+                            showMobileWarning={false}
+                            showTooltip={false}
+                            displayOverlayContent={true}
+                            imgClassName="bg-gradient-to-br from-slate-800/80 to-slate-900/90 border border-violet-500/30 shadow-2xl backdrop-blur-md"
+                            onClick={(e) => navigateToSection('purchase', e.currentTarget)}
+                            className="animate-card-enter cursor-pointer"
+                            style={{ animationDelay: '200ms' }}
+                            overlayContent={
+                                <div className="text-center p-6 flex flex-col items-center h-full justify-center">
+                                    <Icon name="local_shipping" className="text-6xl text-violet-400 mb-4 drop-shadow-[0_0_15px_rgba(167,139,250,0.5)]" />
+                                    <h2 className="text-3xl font-bold text-white mb-2">Purchase</h2>
+                                    <p className="text-slate-300 text-sm">Manage suppliers, enter new stock purchases, and view purchase history.</p>
+                                </div>
+                            }
+                        />
+
+                        <TiltedCard
+                            containerHeight="300px"
+                            containerWidth="300px"
+                            imageHeight="300px"
+                            imageWidth="300px"
+                            rotateAmplitude={12}
+                            scaleOnHover={1.05}
+                            showMobileWarning={false}
+                            showTooltip={false}
+                            displayOverlayContent={true}
+                            imgClassName="bg-gradient-to-br from-slate-800/80 to-slate-900/90 border border-blue-500/30 shadow-2xl backdrop-blur-md"
+                            onClick={(e) => navigateToSection('reports', e.currentTarget)}
+                            className="animate-card-enter cursor-pointer"
+                            style={{ animationDelay: '300ms' }}
+                            overlayContent={
+                                <div className="text-center p-6 flex flex-col items-center h-full justify-center">
+                                    <Icon name="pie_chart" className="text-6xl text-blue-400 mb-4 drop-shadow-[0_0_15px_rgba(96,165,250,0.5)]" />
+                                    <h2 className="text-3xl font-bold text-white mb-2">Reports</h2>
+                                    <p className="text-slate-300 text-sm">View sales charts, performance metrics, and business overviews.</p>
+                                </div>
+                            }
+                        />
+
+                    </div>
+                </div>
+            </ClickSpark>
         </div>
     );
 }

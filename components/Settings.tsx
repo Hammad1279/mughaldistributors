@@ -1,15 +1,7 @@
 
-
-
-
-
-
-
-
 import React, { useMemo, useEffect, useRef, useState } from 'react';
-import { Card, Icon, Button, Input, Modal } from './ui';
+import { Card, Icon, Button, Input } from './ui';
 import { useAppContext } from '../App';
-import { Medicine, MedicalStore, FinalizedBill, Supplier, FinalizedPurchase } from '../types';
 import { ToggleSwitch } from './ui';
 
 declare var Chart: any;
@@ -138,7 +130,7 @@ const SalesChart = () => {
 
 export default function Settings() {
     const { 
-        addNotification, medicines, finalizedBills, medicalStores,
+        addNotification, medicines, finalizedBills,
         setActiveView, clearAllData, billLayoutSettings, updateBillLayoutSettings,
         downloadBackup, initiateImport
     } = useAppContext();
@@ -183,7 +175,6 @@ export default function Settings() {
         let maxRevenue = 0;
         for (const store of storeRevenues.values()) {
             if (store.total > maxRevenue) {
-                // FIX: The original code had a type error (maxRevenue = store) and a logic bug (topStore was not assigned).
                 maxRevenue = store.total;
                 topStore = store;
             }
@@ -193,10 +184,10 @@ export default function Settings() {
     }, [finalizedBills, medicines]);
 
     const handleClearData = () => {
-        if(window.confirm("DANGER: This will delete ALL data for your user account (bills, stores, suppliers, and your personal medicine prices/discounts). The shared medicine inventory for ALL users will NOT be affected. This cannot be undone.")){
-             if(window.confirm("FINAL CONFIRMATION: Are you absolutely sure you want to erase your personal data?")){
-                addNotification("Deleting user data...", "warning");
-                clearAllData(false); // False means do NOT clear shared data
+        if(window.confirm("DANGER: This will delete ALL data stored in your browser (bills, stores, suppliers, inventory). This cannot be undone.")){
+             if(window.confirm("FINAL CONFIRMATION: Are you absolutely sure you want to erase all app data?")){
+                addNotification("Clearing local data...", "warning");
+                clearAllData(false); 
             }
         }
     }
@@ -345,8 +336,8 @@ export default function Settings() {
 
                     <Card className="p-6 border-red-500/50">
                         <h2 className="text-xl font-semibold mb-4 text-red-400">Danger Zone</h2>
-                        <p className="text-slate-400 mb-6">Clearing all data is an irreversible action. It will reset your account to its initial state. The shared inventory of medicine names for all users will NOT be affected. Please export your data first if you want to keep a backup.</p>
-                         <Button onClick={handleClearData} variant="danger" className="w-full" icon="warning">Clear My Data</Button>
+                        <p className="text-slate-400 mb-6">Clearing all data is an irreversible action. It will reset your application to its initial state. Please export your data first if you want to keep a backup.</p>
+                         <Button onClick={handleClearData} variant="danger" className="w-full" icon="warning">Reset App Data</Button>
                     </Card>
                 </div>
             </div>

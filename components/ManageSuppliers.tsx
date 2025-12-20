@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAppContext } from '../App';
 import { Supplier } from '../types';
-import { Button, Input, Textarea, Icon, Modal, Card, SearchInput } from './ui';
+import { Button, Input, Textarea, Icon, Modal, SearchInput } from './ui';
 import SupplierListItem from './SupplierListItem';
 import { StockLevelsModal } from './StockLevelsModal';
 
@@ -86,8 +87,15 @@ const SupplierForm = ({
 
     return (
         <form onSubmit={handleSubmit} className="flex flex-col space-y-4">
-            <Input ref={nameInputRef} label="Supplier Name" name="name" value={formData.name} onChange={handleChange} placeholder="e.g., Global Pharma" required onKeyDown={handleKeyDown} />
-            {nameIsDuplicate && <p className="text-red-400 text-sm -mt-2">This supplier name already exists.</p>}
+            <div>
+                <Input ref={nameInputRef} label="Supplier Name" name="name" value={formData.name} onChange={handleChange} placeholder="e.g., Global Pharma" required onKeyDown={handleKeyDown} />
+                {nameIsDuplicate && (
+                    <p className="form-error-message mt-1.5">
+                        <Icon name="error" className="!text-base" />
+                        <span>This supplier name already exists.</span>
+                    </p>
+                )}
+            </div>
             <Textarea ref={addressInputRef} label="Address" name="address" value={formData.address} onChange={handleChange} placeholder="Supplier's physical address" required onKeyDown={handleKeyDown} />
             <Input ref={contactPersonInputRef} label="Contact Person (Optional)" name="contactPerson" value={formData.contactPerson} onChange={handleChange} placeholder="e.g., Mr. Ahmed" onKeyDown={handleKeyDown} />
             <Input ref={phoneInputRef} label="Phone (Optional)" name="phone" value={formData.phone} onChange={handleChange} placeholder="e.g., 0300-1234567" onKeyDown={handleKeyDown} />
@@ -115,7 +123,7 @@ export default function ManageSuppliers() {
     const filteredSuppliers = useMemo(() => {
         const sorted = [...suppliers].sort((a, b) => a.name.localeCompare(b.name));
         if (!searchTerm.trim()) return sorted;
-        return supplierFuse.search(searchTerm.trim()).map((result: any) => result.item);
+        return supplierFuse.search(searchTerm.trim()).map((result: any) => result.item as Supplier);
     }, [searchTerm, suppliers, supplierFuse]);
     
     const allSupplierNames = useMemo(() => suppliers.map(s => s.name.trim().toLowerCase()), [suppliers]);

@@ -3,10 +3,21 @@
 <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Mughal Distributors OS</title>
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
+          }
+        }
+      }
+    </script>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
@@ -16,9 +27,19 @@
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
       @import url('https://fonts.googleapis.com/css2?family=Calibri&family=Arial&family=Times+New+Roman&family=Courier+New&family=Verdana&family=Georgia&family=Garamond&family=Comic+Sans+MS&family=Impact&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap');
+
       body {
         font-family: 'Inter', sans-serif;
+        -webkit-tap-highlight-color: transparent;
+        padding-bottom: env(safe-area-inset-bottom);
       }
+      
+      /* Mobile Safe Areas */
+      .safe-bottom {
+          padding-bottom: env(safe-area-inset-bottom);
+      }
+
       .material-symbols-outlined {
         font-variation-settings:
         'FILL' 0,
@@ -153,6 +174,17 @@
       .animate-modal-content-out {
           animation: modal-content-scale-out 0.3s cubic-bezier(0.7, 0, 0.84, 0) forwards;
       }
+      /* --- Form Error Styling --- */
+      .form-error-message {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem; /* 8px */
+          color: #f87171; /* red-400 */
+          font-size: 0.875rem; /* 14px */
+          margin-top: 0.5rem; /* 8px */
+          animation: fade-in-content 0.3s ease-in-out;
+      }
+      /* --- End Form Error Styling --- */
        @keyframes slide-in-left {
           from { transform: translateX(-100%); }
           to { transform: translateX(0); }
@@ -160,6 +192,23 @@
       .animate-slide-in-left {
         animation: slide-in-left 0.3s cubic-bezier(0, 0, 0.2, 1) forwards;
       }
+      
+      /* Bottom Sheet Animation */
+      @keyframes slide-up {
+          from { transform: translateY(100%); }
+          to { transform: translateY(0); }
+      }
+      .animate-slide-up {
+          animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+       @keyframes slide-down {
+          from { transform: translateY(0); }
+          to { transform: translateY(100%); }
+      }
+      .animate-slide-down {
+          animation: slide-down 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+
 
       /* Notification Animations */
       @keyframes notification-in {
@@ -886,13 +935,37 @@
       .magnetic-content {
         transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
       }
+      
+      /* MOBILE SPECIFIC OVERRIDES */
+      @media (max-width: 768px) {
+          .section-transition-overlay {
+              top: 0;
+              height: 100vh;
+          }
+          /* iOS Bottom Tab Bar */
+          .ios-tab-bar {
+              background: rgba(15, 23, 42, 0.85);
+              backdrop-filter: blur(20px);
+              -webkit-backdrop-filter: blur(20px);
+              border-top: 1px solid rgba(255,255,255,0.1);
+          }
+      }
     </style>
 <script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@^19.1.1",
-    "react-dom/": "https://esm.sh/react-dom@^19.1.1/",
-    "react/": "https://esm.sh/react@^19.1.1/"
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/client": "https://aistudiocdn.com/react-dom@^19.2.0/client",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "vite": "https://aistudiocdn.com/vite@^7.2.2",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.0",
+    "ogl": "https://cdn.jsdelivr.net/npm/ogl@1.0.11/+esm",
+    "firebase/app": "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js",
+    "firebase/auth": "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js",
+    "firebase/firestore": "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js",
+    "firebase/": "https://aistudiocdn.com/firebase@^12.6.0/",
+    "framer-motion": "https://aistudiocdn.com/framer-motion@^12.23.24"
   }
 }
 </script>

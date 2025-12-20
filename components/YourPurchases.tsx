@@ -1,4 +1,5 @@
-import React, { useMemo, useState, useCallback } from 'react';
+
+import React, { useMemo, useState } from 'react';
 import { useAppContext } from '../App';
 import { FinalizedPurchase, PurchaseItem } from '../types';
 import { Card, Button, Icon, Modal, SearchInput } from './ui';
@@ -56,7 +57,7 @@ export default function YourPurchases() {
         if (!searchTerm.trim()) return sorted;
         
         const fuse = new Fuse(sorted, { keys: ['supplierName', 'purchaseId'], threshold: 0.3, ignoreLocation: true });
-        return fuse.search(searchTerm.trim().replace('#', '')).map((result: any) => result.item);
+        return fuse.search(searchTerm.trim().replace('#', '')).map((result: any) => result.item as FinalizedPurchase);
     }, [searchTerm, finalizedPurchases]);
 
     const handleConfirmDelete = (purchaseId: number) => {
