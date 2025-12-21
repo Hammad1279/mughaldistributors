@@ -1,8 +1,7 @@
-
 import React, { useState, useMemo, useCallback } from 'react';
 import { useAppContext } from '../App';
 import { Medicine } from '../types';
-import { Card, Button, Icon, SearchInput } from './ui';
+import { Card, Button, Input, Icon, Modal, SearchInput } from './ui';
 import { ProductModal } from './ProductModal';
 import InventoryRow from './InventoryRow';
 
@@ -22,7 +21,7 @@ export default function Inventory() {
     const filteredMedicines = useMemo(() => {
         const sorted = [...medicines].sort((a, b) => a.name.localeCompare(b.name));
         if (!searchTerm.trim()) return sorted;
-        return medicineFuse.search(searchTerm.trim()).map((result: any) => result.item as Medicine);
+        return medicineFuse.search(searchTerm.trim()).map((result: any) => result.item);
     }, [searchTerm, medicines, medicineFuse]);
 
     const { total, priced, unpriced } = useMemo(() => {
@@ -90,7 +89,7 @@ export default function Inventory() {
 
             <Card className="overflow-hidden">
                 <div className="overflow-x-auto custom-scrollbar">
-                    <table className="min-w-full text-sm text-left">
+                    <table className="min-w-full text-sm text-left responsive-table">
                         <thead className="bg-slate-900/50">
                             <tr>
                                 <th className="p-4 font-semibold text-slate-300 w-2/5">Medicine Name</th>

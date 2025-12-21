@@ -1,8 +1,9 @@
 
+
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useAppContext } from '../App';
 import { Medicine, CartItem, FinalizedBill } from '../types';
-import { Button, Icon, BottomSheet, SearchInput } from './ui';
+import { Card, Button, Icon } from './ui';
 import { BillTemplate } from './BillTemplate';
 import BillRow from './BillRow';
 
@@ -25,67 +26,6 @@ interface ActiveSearch {
     top: number;
     left: number;
 }
-
-// --- Mobile Specific Components ---
-const MobileBillItemCard: React.FC<{
-    item: CartItem;
-    data: BillItemData | undefined;
-    onEdit: (id: string) => void;
-    onDelete: (id: string) => void;
-    totals: { netAmount: number };
-}> = ({ item, data, onEdit, onDelete, totals }) => {
-    // Robust fallback for undefined data to prevent crashes
-    const quantity = data?.quantity ?? item.quantity ?? 1;
-    const rate = data?.rate ?? item.mrp ?? 0;
-    const discount = data?.discountValue ?? 0;
-
-    return (
-        <div 
-            className="bg-slate-800/80 backdrop-blur-sm p-4 rounded-2xl mb-3 border border-slate-700/50 shadow-sm active:scale-[0.98] transition-transform relative overflow-hidden group" 
-            onClick={() => onEdit(item.id)}
-        >
-            {/* Subtle gradient background */}
-            <div className="absolute inset-0 bg-gradient-to-br from-violet-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-            
-            <div className="relative z-10">
-                <div className="flex justify-between items-start mb-3">
-                    <h3 className="font-bold text-slate-100 text-lg truncate pr-8 leading-tight">{item.name}</h3>
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); onDelete(item.id); }} 
-                        className="absolute top-0 right-0 p-2 -mr-2 -mt-2 text-slate-500 hover:text-red-400 active:text-red-500 transition-colors"
-                    >
-                        <Icon name="cancel" className="text-xl" />
-                    </button>
-                </div>
-                <div className="flex justify-between items-end">
-                    <div className="flex gap-5">
-                        <div className="flex flex-col">
-                             <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-0.5">Qty</span>
-                             <span className="text-white font-semibold text-base font-mono">{quantity}</span>
-                        </div>
-                        <div className="flex flex-col">
-                             <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-0.5">Rate</span>
-                             <span className="text-white font-semibold text-base font-mono">{rate}</span>
-                        </div>
-                         {(discount > 0) && (
-                             <div className="flex flex-col">
-                                 <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-0.5">Disc</span>
-                                 <span className="text-amber-400 font-semibold text-base font-mono">{discount}%</span>
-                            </div>
-                         )}
-                    </div>
-                    <div className="text-right">
-                        <span className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-0.5">Amount</span>
-                        <span className="text-xl font-bold text-emerald-400 font-mono">
-                            <span className="text-sm align-top mr-0.5">Rs</span>
-                            {totals.netAmount.toFixed(0)}
-                        </span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
 
 const ProductSearchDropdown: React.FC<{
     search: ActiveSearch;
@@ -136,7 +76,7 @@ export default function CreateBill() {
         medicines, addMedicine, medicalStores, currentBillingStoreID,
         cart, setCart, resetBillingSession, finalizeBill, addNotification,
         finalizedBills, editingBillNo, setEditingBillNo, setActiveView, activeView,
-        setFocusedMed, setHoveredMed, billLayoutSettings, salesSettings, isMobile
+        setFocusedMed, setHoveredMed, billLayoutSettings, salesSettings
     } = useAppContext();
 
     const [itemData, setItemData] = useState<Record<string, BillItemData>>({});
@@ -144,10 +84,6 @@ export default function CreateBill() {
     const [activeSearch, setActiveSearch] = useState<ActiveSearch | null>(null);
     const [activeSearchIndex, setActiveSearchIndex] = useState(0);
     const [emptyRowCount, setEmptyRowCount] = useState(0);
-    
-    // Mobile Specific State
-    const [isProductSheetOpen, setIsProductSheetOpen] = useState(false);
-    const [editingItemId, setEditingItemId] = useState<string | null>(null);
     
     const searchInputRef = useRef<HTMLInputElement>(null);
     const gridContainerRef = useRef<HTMLDivElement>(null);
@@ -178,15 +114,11 @@ export default function CreateBill() {
     }, [initialBillNo]);
 
     const calculateItemTotals = useCallback((med: Medicine, data: BillItemData | undefined) => {
-        // Robust check for undefined data
-        if (!data) {
+        if (!data || !data.quantity || !data.rate) {
             return { calculatedDiscountAmount: 0, netAmount: 0 };
         }
-        const qty = data.quantity || 0;
-        const rate = data.rate || 0;
-
-        const grossAmount = qty * rate;
-        const discountPercentage = data.discountValue ?? med.saleDiscount ?? 0;
+        const grossAmount = data.quantity * data.rate;
+        const discountPercentage = data.discountValue ?? med.discount ?? 0;
         const calculatedDiscountAmount = grossAmount * (discountPercentage / 100);
         const taxAmount = data.salesTaxAmount || 0;
         const netAmount = grossAmount - calculatedDiscountAmount + taxAmount;
@@ -200,7 +132,7 @@ export default function CreateBill() {
             return {
                 ...med,
                 quantity: data?.quantity || 0,
-                discountValue: data?.discountValue ?? med.saleDiscount,
+                discountValue: data?.discountValue ?? med.discount,
                 purchaseDiscount: med.discount,
                 mrp: data?.rate ?? med.price ?? 0,
                 calculatedDiscountAmount,
@@ -230,7 +162,7 @@ export default function CreateBill() {
                 newData[med.id] = currentData[med.id] || {
                     quantity: (med as CartItem).quantity || 1,
                     rate: (med as CartItem).mrp || med.price || 0,
-                    discountValue: (med as CartItem).discountValue ?? med.saleDiscount,
+                    discountValue: (med as CartItem).discountValue ?? med.discount,
                     batchNo: med.batchNo,
                     salesTaxAmount: (med as CartItem).salesTaxAmount ?? null,
                 };
@@ -302,27 +234,22 @@ export default function CreateBill() {
         const term = e.target.value;
         setSearchTerm(term);
         if (term.trim()) {
-            const results = medicineFuse.search(term.trim()).map((r:any) => r.item).slice(0, 20); // Increased limit for mobile
+            const results = medicineFuse.search(term.trim()).map(r => r.item).slice(0, 7);
             const searchResults: (Medicine | { id: 'add_new'; name: string })[] = [...results];
-            if (!results.some((r:any) => r.name.toLowerCase() === term.trim().toLowerCase())) {
+            if (!results.some(r => r.name.toLowerCase() === term.trim().toLowerCase())) {
                  searchResults.push({ id: 'add_new', name: term.trim() });
             }
            
-            if (isMobile) {
-                 // For mobile, we just set results to render in the sheet
-                 setActiveSearch({ term, results: searchResults, top: 0, left: 0 });
-            } else {
-                const inputRect = e.target.getBoundingClientRect();
-                const mainContent = (e.target as HTMLElement).closest('.animate-main-in');
-                const mainRect = mainContent ? mainContent.getBoundingClientRect() : { top: 0, left: 0 };
-        
-                setActiveSearch({
-                    term,
-                    results: searchResults,
-                    top: inputRect.bottom + 4 - mainRect.top,
-                    left: inputRect.left - mainRect.left
-                });
-            }
+            const inputRect = e.target.getBoundingClientRect();
+            const mainContent = (e.target as HTMLElement).closest('.animate-main-in');
+            const mainRect = mainContent ? mainContent.getBoundingClientRect() : { top: 0, left: 0 };
+    
+            setActiveSearch({
+                term,
+                results: searchResults,
+                top: inputRect.bottom + 4 - mainRect.top,
+                left: inputRect.left - mainRect.left
+            });
             setActiveSearchIndex(0);
         } else {
             setActiveSearch(null);
@@ -332,14 +259,13 @@ export default function CreateBill() {
     const handleSelectSearchResult = async (item: Medicine | { id: 'add_new'; name: string }) => {
         setActiveSearch(null);
         setSearchTerm('');
-        if (isMobile) setIsProductSheetOpen(false);
 
         const processItem = (med: Medicine) => {
             if (!cart.some(cartItem => cartItem.id === med.id)) {
                 const newCartItem: CartItem = {
                     ...med,
                     quantity: 1,
-                    discountValue: med.saleDiscount,
+                    discountValue: med.discount,
                     purchaseDiscount: med.discount,
                     mrp: med.price || 0,
                     calculatedDiscountAmount: 0,
@@ -347,9 +273,7 @@ export default function CreateBill() {
                     salesTaxAmount: null,
                 };
                 setCart(prevCart => [...prevCart, newCartItem]);
-                if (!isMobile) {
-                    setTimeout(() => document.getElementById(`input-${med.id}-quantity`)?.focus(), 50);
-                }
+                setTimeout(() => document.getElementById(`input-${med.id}-quantity`)?.focus(), 50);
             } else {
                  addNotification(`"${med.name}" is already in the bill.`, 'info');
             }
@@ -393,22 +317,28 @@ export default function CreateBill() {
     };
 
     const handleDataChange = (medId: string, field: keyof BillItemData, value: string | number) => {
-        // If quantity is set to 0 or an empty string, remove the item from the bill
+        // This refactored logic ensures that an item is removed from the cart if its quantity becomes zero.
+        // It updates the item's data first, then triggers removal, making state updates more predictable and
+        // preventing race conditions where other data (like Rate) could prevent the removal.
+
+        // Step 1: Always update the item's specific data.
+        setItemData(prev => {
+            const currentData = prev[medId] || {
+                quantity: 1, rate: 0, discountValue: null, batchNo: '', salesTaxAmount: null
+            };
+            const updatedData = { ...currentData, [field]: value };
+            return { ...prev, [medId]: updatedData as BillItemData };
+        });
+
+        // Step 2: If the quantity was set to zero or less, remove the item from the cart.
         if (field === 'quantity' && Number(value) <= 0) {
-            const itemToRemove = cart.find(item => item.id === medId);
-            setCart(prevCart => prevCart.filter(item => item.id !== medId));
-            if (itemToRemove) {
-                addNotification(`"${itemToRemove.name}" removed from bill.`, 'info');
-            }
-            if (isMobile && editingItemId === medId) setEditingItemId(null);
-        } else {
-            setItemData(prev => ({
-                ...prev,
-                [medId]: {
-                    ...prev[medId],
-                    [field]: value
+            setCart(prevCart => {
+                const itemToRemove = prevCart.find(item => item.id === medId);
+                if (itemToRemove) {
+                    addNotification(`"${itemToRemove.name}" removed from bill.`, 'info');
                 }
-            }));
+                return prevCart.filter(item => item.id !== medId);
+            });
         }
     };
 
@@ -421,7 +351,7 @@ export default function CreateBill() {
     }, [setFocusedMed]);
 
     const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, medId: string, field: FocusableField) => {
-        if (activeSearch && !isMobile) { // Navigation within search dropdown
+        if (activeSearch) { // Navigation within search dropdown
              if (e.key === 'ArrowDown') {
                 e.preventDefault();
                 setActiveSearchIndex(prev => (prev + 1) % activeSearch.results.length);
@@ -494,8 +424,8 @@ export default function CreateBill() {
     };
 
     const handleFinalizeBill = async (andPrint = false) => {
-        if (!activeStore) { addNotification("Cannot finalize: No store is selected.", "error"); return; }
-        if (cart.length === 0) { addNotification("Cannot finalize: The bill is empty.", "error"); return; }
+        if (!activeStore) { addNotification("No store selected.", "error"); return; }
+        if (cart.length === 0) { addNotification("Cart is empty.", "error"); return; }
 
         const billDataForFirestore = {
             storeId: activeStore.id,
@@ -510,7 +440,7 @@ export default function CreateBill() {
 
         const billNumberToUse = Number(billNo);
         if (isNaN(billNumberToUse) || billNumberToUse <= 0) {
-            addNotification("Invalid Bill Number. It must be a positive number.", "error");
+            addNotification("Invalid Bill Number.", "error");
             return;
         }
         
@@ -639,203 +569,6 @@ export default function CreateBill() {
         setDragOverInfo({ id: null, position: null });
     };
 
-
-    // --- MOBILE VIEW RENDER ---
-    if (isMobile) {
-        const editingItem = editingItemId ? cart.find(i => i.id === editingItemId) : null;
-        const editingItemData = editingItemId ? itemData[editingItemId] : null;
-
-        return (
-            <div className="h-full flex flex-col bg-slate-900 text-slate-200 relative">
-                {/* Mobile Header - Glassmorphism */}
-                <div className="sticky top-0 z-20 bg-slate-900/80 backdrop-blur-xl border-b border-white/10 p-4 shadow-lg flex justify-between items-center transition-all duration-300">
-                     <div>
-                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Bill #{billNo}</div>
-                        {activeStore ? (
-                            <div className="text-lg font-bold text-white leading-tight flex items-center gap-1">
-                                {activeStore.name}
-                                <Icon name="verified" className="text-blue-400 text-sm" />
-                            </div>
-                        ) : (
-                            <button onClick={() => setActiveView('manage-stores')} className="text-amber-400 font-semibold flex items-center gap-1 animate-pulse">
-                                Select Store <Icon name="chevron_right" />
-                            </button>
-                        )}
-                     </div>
-                     <div className="text-right bg-slate-800/50 px-3 py-1.5 rounded-lg border border-white/5">
-                         <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Total</div>
-                         <div className="text-lg font-bold text-emerald-400">
-                             <span className="text-xs align-top mr-0.5">Rs</span>{grandTotal.toFixed(0)}
-                         </div>
-                     </div>
-                </div>
-
-                {/* Mobile Item List */}
-                <div className="flex-1 overflow-y-auto p-3 custom-scrollbar pb-24 space-y-3">
-                    {cart.length > 0 ? (
-                        cart.map(item => (
-                            <MobileBillItemCard 
-                                key={item.id}
-                                item={item}
-                                data={itemData[item.id]}
-                                onEdit={(id) => setEditingItemId(id)}
-                                onDelete={(id) => {
-                                     setCart(prev => prev.filter(i => i.id !== id));
-                                     addNotification("Item removed", "info");
-                                }}
-                                totals={calculateItemTotals(item, itemData[item.id])}
-                            />
-                        ))
-                    ) : (
-                        <div className="flex flex-col items-center justify-center h-[60vh] text-slate-500 px-8 text-center">
-                            <div className="w-20 h-20 rounded-full bg-slate-800 flex items-center justify-center mb-6 shadow-inner">
-                                <Icon name="shopping_cart" className="text-4xl opacity-30" />
-                            </div>
-                            <h3 className="text-lg font-semibold text-slate-300 mb-2">Your bill is empty</h3>
-                            <p className="text-sm">Tap "Add Item" below to start building your order.</p>
-                        </div>
-                    )}
-                </div>
-                
-                {/* Mobile Bottom Actions - Floating Bar Style */}
-                <div className="fixed bottom-20 left-0 right-0 px-4 z-10">
-                     <div className="flex gap-3 bg-slate-800/90 backdrop-blur-xl p-2 rounded-2xl shadow-2xl border border-white/10">
-                         <button 
-                            onClick={() => setIsProductSheetOpen(true)}
-                            className="flex-1 bg-slate-700/50 hover:bg-slate-700 active:scale-95 transition-all text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2"
-                         >
-                             <Icon name="add" className="text-xl" /> Add Item
-                         </button>
-                         <button 
-                            onClick={() => handleFinalizeBill(false)}
-                            disabled={!isBillingActive || cart.length === 0}
-                            className="flex-1 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 active:scale-95 transition-all text-white font-bold py-3 rounded-xl shadow-lg shadow-violet-900/30 flex items-center justify-center gap-2 disabled:opacity-50 disabled:grayscale"
-                         >
-                             Finish <Icon name="check" className="text-xl" />
-                         </button>
-                     </div>
-                </div>
-
-                {/* Add Product Sheet */}
-                <BottomSheet isOpen={isProductSheetOpen} onClose={() => setIsProductSheetOpen(false)} title="Add Product">
-                    <div className="p-2 space-y-4 min-h-[50vh]">
-                        <SearchInput
-                            value={searchTerm}
-                            onChange={handleSearchChange}
-                            onClear={() => { setSearchTerm(''); setActiveSearch(null); }}
-                            placeholder="Search medicine..."
-                            className="w-full"
-                            autoFocus
-                        />
-                        <div className="max-h-[50vh] overflow-y-auto pb-10">
-                            {activeSearch ? (
-                                <ul className="space-y-2">
-                                    {activeSearch.results.map((item: any) => (
-                                        <li 
-                                            key={item.id} 
-                                            onClick={() => handleSelectSearchResult(item)}
-                                            className="p-4 bg-slate-800/50 rounded-xl border border-slate-700/50 flex justify-between items-center active:bg-violet-600 active:border-violet-500 active:text-white transition-all"
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-400">
-                                                    {item.name.charAt(0)}
-                                                </div>
-                                                <span className="font-semibold text-base">{item.name}</span>
-                                            </div>
-                                            {item.price && <span className="text-xs font-mono opacity-70 bg-black/20 px-2 py-1 rounded">Rs {item.price}</span>}
-                                            {item.id === 'add_new' && <Icon name="add" />}
-                                        </li>
-                                    ))}
-                                </ul>
-                            ) : (
-                                <div className="text-center py-10 text-slate-500">
-                                    <p>Start typing to search...</p>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </BottomSheet>
-
-                {/* Edit Item Sheet */}
-                <BottomSheet isOpen={!!editingItemId} onClose={() => setEditingItemId(null)} title={editingItem?.name || 'Edit Item'}>
-                    {editingItem && editingItemData && (
-                        <div className="space-y-6 p-4 pb-10">
-                            <div className="bg-slate-800/50 rounded-2xl p-4 border border-slate-700/50">
-                                <div className="grid grid-cols-2 gap-6 mb-6">
-                                    <div>
-                                        <label className="block text-[10px] text-slate-400 mb-2 uppercase tracking-widest font-bold">Quantity</label>
-                                        <div className="flex items-center gap-2 bg-slate-900/50 rounded-full p-1 border border-slate-700">
-                                            <button 
-                                                onClick={() => handleDataChange(editingItem.id, 'quantity', editingItemData.quantity - 1)}
-                                                className="w-10 h-10 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-xl font-bold active:scale-90 transition-transform"
-                                            >
-                                                -
-                                            </button>
-                                            <input 
-                                                type="number" 
-                                                className="bg-transparent text-center text-xl font-bold w-full focus:outline-none text-white font-mono" 
-                                                value={editingItemData.quantity}
-                                                inputMode="decimal"
-                                                onChange={(e) => handleDataChange(editingItem.id, 'quantity', parseFloat(e.target.value))}
-                                            />
-                                            <button 
-                                                onClick={() => handleDataChange(editingItem.id, 'quantity', editingItemData.quantity + 1)}
-                                                className="w-10 h-10 rounded-full bg-violet-600 text-white flex items-center justify-center text-xl font-bold active:scale-90 transition-transform shadow-lg shadow-violet-900/30"
-                                            >
-                                                +
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="block text-[10px] text-slate-400 mb-2 uppercase tracking-widest font-bold">Price (Rs)</label>
-                                        <input 
-                                            type="number" 
-                                            inputMode="decimal"
-                                            className="w-full bg-slate-900/50 border border-slate-700 p-3 rounded-xl text-xl font-bold text-center focus:ring-2 focus:ring-violet-500 outline-none font-mono" 
-                                            value={editingItemData.rate}
-                                            onChange={(e) => handleDataChange(editingItem.id, 'rate', parseFloat(e.target.value))}
-                                        />
-                                    </div>
-                                </div>
-                                
-                                 <div className="grid grid-cols-2 gap-6">
-                                    <div>
-                                        <label className="block text-[10px] text-slate-400 mb-2 uppercase tracking-widest font-bold">Discount %</label>
-                                        <input 
-                                            type="number" 
-                                            inputMode="decimal"
-                                            className="w-full bg-slate-900/50 border border-slate-700 p-3 rounded-xl text-xl font-bold text-center focus:ring-2 focus:ring-violet-500 outline-none font-mono text-amber-400" 
-                                            value={editingItemData.discountValue || ''}
-                                            placeholder="0"
-                                            onChange={(e) => handleDataChange(editingItem.id, 'discountValue', parseFloat(e.target.value))}
-                                        />
-                                    </div>
-                                    <div className="flex items-end justify-end">
-                                         <div className="text-right bg-slate-900/80 p-3 rounded-xl border border-slate-700 w-full">
-                                            <div className="text-[9px] text-slate-400 uppercase font-bold tracking-wider mb-1">Total</div>
-                                            <div className="text-2xl font-bold text-emerald-400 font-mono leading-none">
-                                                <span className="text-sm align-top mr-1 text-emerald-600">Rs</span>
-                                                {calculateItemTotals(editingItem, editingItemData).netAmount.toFixed(0)}
-                                            </div>
-                                         </div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <button 
-                                onClick={() => setEditingItemId(null)} 
-                                className="w-full bg-white text-slate-900 hover:bg-slate-200 active:scale-[0.98] transition-all py-4 rounded-xl font-bold text-lg shadow-lg"
-                            >
-                                Done
-                            </button>
-                        </div>
-                    )}
-                </BottomSheet>
-            </div>
-        );
-    }
-
-    // --- DESKTOP VIEW (Classic) ---
     return (
         <div className="h-full" onClick={(e) => e.stopPropagation()}>
             <div className="classic-billing-interface fade-in-content">
@@ -867,7 +600,7 @@ export default function CreateBill() {
                         )}
                     </div>
 
-                    <div className="flex-grow"></div>
+                    <div className="flex-grow hidden md:block"></div>
                     <button className="classic-toolbar-button" onClick={() => handleFinalizeBill()} disabled={!isBillingActive || cart.length === 0}>Save</button>
                     <button className="classic-toolbar-button !bg-emerald-600 hover:!bg-emerald-500 text-white" onClick={() => handleFinalizeBill(true)} disabled={!isBillingActive || cart.length === 0}>Save & Print</button>
                     {isCancelling ? (
@@ -879,9 +612,9 @@ export default function CreateBill() {
                     )}
                 </header>
                 
-                <div ref={gridContainerRef} className={`classic-grid-container custom-scrollbar ${!isBillingActive ? '!border-0 !bg-slate-950 !rounded-none shadow-none -m-2 w-[calc(100%+16px)] h-[calc(100%+16px)]' : ''}`}>
+                <div ref={gridContainerRef} className="classic-grid-container custom-scrollbar">
                     { isBillingActive ? (
-                        <table className="classic-grid">
+                        <table className="classic-grid responsive-table">
                             <thead>
                                 <tr>
                                     <th style={{ width: '45%' }}>Product</th>
@@ -930,7 +663,7 @@ export default function CreateBill() {
                                             med={med}
                                             data={data}
                                             netAmount={totals.netAmount}
-                                            discountDisplayValue={data?.discountValue ?? med.saleDiscount ?? ''}
+                                            discountDisplayValue={data?.discountValue ?? med.discount ?? ''}
                                             onDataChange={handleDataChange}
                                             onKeyDown={handleInputKeyDown}
                                             onFocus={(e) => e.target.select()}
@@ -954,16 +687,10 @@ export default function CreateBill() {
                             </tbody>
                         </table>
                     ) : (
-                        <div className="flex flex-col items-center justify-center h-full w-full select-none opacity-60">
-                             <div className="flex items-end gap-4 mb-6">
-                                <span className="text-[120px] font-bold text-slate-800 leading-[0.8] tracking-tighter">NO</span>
-                                <div className="h-3 w-24 bg-slate-800 rounded-full mb-6"></div>
-                                <Icon name="storefront" className="text-[100px] text-slate-800 mb-2" />
-                             </div>
-                             <h3 className="text-2xl font-bold text-slate-400 mb-3">Select a Store to Begin</h3>
-                             <p className="text-slate-500 max-w-md text-center leading-relaxed">
-                                Please choose a store from the 'Stores' section or <br/> click the 'Select a Store' button above.
-                             </p>
+                        <div className="flex flex-col items-center justify-center text-center p-10 text-slate-400 h-full">
+                            <Icon name="no_store" className="text-6xl mb-4 text-slate-500"/>
+                            <h3 className="text-2xl font-semibold text-slate-300">Select a Store to Begin</h3>
+                            <p className="mt-2 max-w-sm">Please choose a store from the 'Stores' section or click the 'Select a Store' button above.</p>
                         </div>
                     )}
                 </div>
@@ -976,7 +703,7 @@ export default function CreateBill() {
                 </footer>
             </div>
             
-            {activeSearch && !isMobile && (
+            {activeSearch && (
                 <ProductSearchDropdown 
                     search={activeSearch}
                     onSelect={handleSelectSearchResult}

@@ -1,7 +1,5 @@
 
 
-import { AppData, MedicineDefinition, UserMedicineData } from './types';
-
 // NOTE: This data has been enriched with company information and a separate saleDiscount field.
 export const INITIAL_MEDICINES_DATA: { name: string; company: string; discount: number | null; saleDiscount: number | null; type: string; }[] = [
   { name: 'EZOMOL 20MG CAP', company: 'ABBOT LABORATORIES', discount: null, saleDiscount: 2, type: 'CAP' },
@@ -247,55 +245,3 @@ export const INITIAL_MEDICINES_DATA: { name: string; company: string; discount: 
   { name: 'ZATOFIN TAB', company: 'HILTON PHARMA', discount: null, saleDiscount: null, type: 'TAB' },
   { name: 'SANGOBIAN CAP', company: 'MARCK MARKER', discount: null, saleDiscount: null, type: 'CAP' },
 ];
-
-export const getInitialAppData = (): AppData => {
-    const initialGlobalDefs: MedicineDefinition[] = INITIAL_MEDICINES_DATA.map(med => ({
-        id: crypto.randomUUID(),
-        name: med.name,
-        company: med.company,
-        type: med.type,
-        tags: med.name.toLowerCase().split(/\s+/).filter(Boolean),
-    }));
-
-    const initialUserMedicineData: Record<string, UserMedicineData> = {};
-    initialGlobalDefs.forEach((def, index) => {
-        const initialMed = INITIAL_MEDICINES_DATA[index];
-        initialUserMedicineData[def.id] = {
-            price: null,
-            discount: initialMed.discount,
-            saleDiscount: initialMed.saleDiscount,
-            batchNo: '',
-            lastUpdated: new Date(0).toISOString(),
-        };
-    });
-
-    return {
-        version: '1.0.0',
-        global_medicine_definitions: initialGlobalDefs,
-        user_medicine_data: initialUserMedicineData,
-        medicalStores: [],
-        finalizedBills: [],
-        suppliers: [],
-        finalizedPurchases: [],
-        billLayoutSettings: {
-            distributorName: 'Mughal Distributors',
-            distributorTitle: 'ESTIMATE',
-            distributorAddressLine1: 'Bismillah Plaza, Opp. Sonari Bank',
-            distributorAddressLine2: 'Chinioat Bazar, Faisalabad',
-            footerText: '',
-            showPhoneNumber: true,
-            showBillDate: true,
-            phoneNumber: '03040297400'
-        },
-        salesSettings: { showSalesTaxColumn: false, showBatchNo: false },
-        cart: [],
-        purchaseCart: {},
-        purchaseCartOrder: [],
-        currentBillingStoreID: null,
-        currentPurchaseSupplierID: null,
-        currentViewingSupplierId: null,
-        editingBillNo: null,
-        editingPurchaseId: null,
-        billFilterStoreID: null,
-    };
-};

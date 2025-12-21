@@ -53,19 +53,17 @@ export const EditableCell: React.FC<EditableCellProps> = ({
         onStartEditing();
     };
     
-    // We remove explicit React.CSSProperties type to allow direct property access
-    // while casting specific properties to match React's CSS types
     const cellStyle = {
         fontWeight: cellData.style?.fontWeight || 'normal',
         fontStyle: cellData.style?.fontStyle || 'normal',
         textDecoration: cellData.style?.textDecoration || 'none',
-        textAlign: (cellData.style?.textAlign || (typeof cellData.value === 'number' ? 'right' : 'left')) as React.CSSProperties['textAlign'],
+        textAlign: cellData.style?.textAlign || (typeof cellData.value === 'number' ? 'right' : 'left'),
         verticalAlign: cellData.style?.verticalAlign || 'middle',
         backgroundColor: cellData.style?.backgroundColor,
         color: cellData.style?.color,
         fontFamily: cellData.style?.fontFamily || 'Calibri',
         fontSize: cellData.style?.fontSize ? `${cellData.style.fontSize}pt` : '11pt',
-        whiteSpace: (cellData.style?.whiteSpace || 'nowrap') as React.CSSProperties['whiteSpace'],
+        whiteSpace: cellData.style?.whiteSpace || 'nowrap',
         textIndent: cellData.style?.textIndent,
     };
     
@@ -76,7 +74,7 @@ export const EditableCell: React.FC<EditableCellProps> = ({
             className={`grid-cell ${isSelected ? 'selected' : ''}`}
             onClick={onSelect}
             onDoubleClick={handleDoubleClick}
-            style={cellStyle}
+            style={cellStyle as React.CSSProperties}
         >
             {isEditing ? (
                 <input
@@ -91,7 +89,7 @@ export const EditableCell: React.FC<EditableCellProps> = ({
                         textAlign: cellStyle.textAlign,
                         fontFamily: cellStyle.fontFamily,
                         fontSize: cellStyle.fontSize,
-                    }}
+                    } as any}
                 />
             ) : (
                 <div 
@@ -99,7 +97,7 @@ export const EditableCell: React.FC<EditableCellProps> = ({
                     title={cellData.error ?? undefined}
                     style={{
                        justifyContent: cellStyle.textAlign === 'right' ? 'flex-end' : cellStyle.textAlign === 'center' ? 'center' : 'flex-start'
-                    }}
+                    } as any}
                 >
                     {displayValue}
                 </div>

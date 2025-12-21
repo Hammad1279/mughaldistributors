@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 
 // --- ICONS ---
 // Using Google's Material Symbols and Font Awesome, loaded via CDN in index.html
@@ -45,7 +44,7 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ children, variant = 'primary', className = '', icon, ...props }, ref) => {
-    const baseClasses = 'px-5 py-2.5 rounded-md font-semibold flex items-center justify-center transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95';
+    const baseClasses = 'px-5 py-2.5 rounded-md font-semibold flex items-center justify-center transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed';
     
     const variantClasses = {
       primary: 'bg-violet-600 hover:bg-violet-500 text-white shadow-sm focus-visible:ring-violet-500',
@@ -53,7 +52,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       danger: 'bg-red-600 hover:bg-red-500 text-white shadow-sm focus-visible:ring-red-500',
       success: 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm focus-visible:ring-emerald-500',
       warning: 'bg-amber-600 hover:bg-amber-500 text-white shadow-sm focus-visible:ring-amber-500',
-      toolbar: 'bg-slate-700 hover:bg-slate-600 text-slate-200 focus-visible:ring-slate-500 !py-1.5 !px-3 !text-sm !shadow-sm active:scale-90',
+      toolbar: 'bg-slate-700 hover:bg-slate-600 text-slate-200 focus-visible:ring-slate-500 !py-1.5 !px-3 !text-sm !shadow-sm',
     };
 
     return (
@@ -160,9 +159,8 @@ interface ModalProps {
   onClose: () => void;
   children: React.ReactNode;
   title: string;
-  isMobile?: boolean; // Add mobile prop
 }
-export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, children, title, isMobile }) => {
+export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, children, title }) => {
   const [isRendered, setIsRendered] = React.useState(false);
 
   React.useEffect(() => {
@@ -193,11 +191,6 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, children, title, 
     return null;
   }
 
-  // Auto-detect mobile viewport for bottom sheet
-  if (window.innerWidth < 768) {
-      return <BottomSheet isOpen={isOpen} onClose={onClose} title={title}>{children}</BottomSheet>;
-  }
-
   return (
     <div
       className={`fixed inset-0 z-50 flex items-center justify-center p-4 ${isOpen ? 'animate-modal-bg' : 'animate-modal-bg-out'}`}
@@ -222,53 +215,6 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, children, title, 
   );
 };
 
-// --- BOTTOM SHEET (IOS STYLE) ---
-export const BottomSheet: React.FC<{ isOpen: boolean; onClose: () => void; children: React.ReactNode; title?: string }> = ({ isOpen, onClose, children, title }) => {
-    const [isRendered, setIsRendered] = useState(false);
-
-    useEffect(() => {
-        if (isOpen) setIsRendered(true);
-    }, [isOpen]);
-
-    const handleAnimationEnd = () => {
-        if (!isOpen) setIsRendered(false);
-    };
-
-    if (!isRendered) return null;
-
-    return (
-        <div className="fixed inset-0 z-[200] flex items-end justify-center" role="dialog" aria-modal="true">
-            {/* Backdrop */}
-            <div 
-                className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0'}`} 
-                onClick={onClose}
-            />
-            
-            {/* Sheet */}
-            <div 
-                className={`relative w-full bg-slate-900/90 backdrop-blur-xl rounded-t-[20px] shadow-2xl border-t border-white/10 max-h-[90vh] overflow-hidden flex flex-col safe-bottom ${isOpen ? 'animate-slide-up' : 'animate-slide-down'}`}
-                onAnimationEnd={handleAnimationEnd}
-            >
-                {/* Drag Handle */}
-                <div className="w-full flex justify-center pt-3 pb-1" onClick={onClose}>
-                    <div className="w-12 h-1.5 bg-slate-600/50 rounded-full" />
-                </div>
-
-                <div className="flex-shrink-0 px-4 pb-3 border-b border-white/5 flex justify-between items-center">
-                    <h3 className="text-lg font-bold text-white">{title}</h3>
-                    <button onClick={onClose} className="p-2 text-slate-400 hover:text-white rounded-full bg-slate-800/50">
-                        <Icon name="close" className="text-sm" />
-                    </button>
-                </div>
-                <div className="flex-1 overflow-y-auto custom-scrollbar pb-8">
-                    {children}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-
 // --- TOGGLE SWITCH ---
 interface ToggleSwitchProps {
     label: string;
@@ -286,52 +232,3 @@ export const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ label, checked, onCh
         </div>
     </label>
 );
-
-// --- MOBILE TAB BAR ---
-interface MobileNavBarProps {
-    activeTab: string;
-    onTabChange: (tab: any) => void;
-}
-
-export const MobileNavBar: React.FC<MobileNavBarProps> = ({ activeTab, onTabChange }) => {
-    const tabs = [
-        { id: 'welcome', icon: 'home', label: 'Home' },
-        { id: 'manage-stores', icon: 'storefront', label: 'Stores' },
-        { id: 'create-bill', icon: 'receipt_long', label: 'Bill' },
-        { id: 'inventory', icon: 'inventory_2', label: 'Stock' },
-        { id: 'settings', icon: 'settings', label: 'Settings' },
-    ];
-
-    return (
-        <div className="fixed bottom-0 left-0 right-0 z-[100] ios-tab-bar safe-bottom bg-slate-900/85 backdrop-blur-xl border-t border-white/10 shadow-2xl">
-            <div className="flex justify-around items-center h-16">
-                {tabs.map(tab => {
-                    const isActive = activeTab === tab.id || 
-                                     (tab.id === 'welcome' && activeTab === 'welcome') ||
-                                     (tab.id === 'create-bill' && activeTab === 'create-bill') || 
-                                     (tab.id === 'manage-stores' && activeTab === 'manage-stores') ||
-                                     (tab.id === 'inventory' && activeTab === 'inventory') ||
-                                     (tab.id === 'settings' && activeTab === 'settings');
-
-                    return (
-                        <button
-                            key={tab.id}
-                            onClick={() => onTabChange(tab.id)}
-                            className={`flex flex-col items-center justify-center w-full h-full space-y-1 active:scale-90 transition-all duration-200 group`}
-                        >
-                            <div className={`rounded-full px-4 py-1 transition-colors ${isActive ? 'bg-violet-500/20' : 'bg-transparent'}`}>
-                                <Icon 
-                                    name={tab.icon} 
-                                    className={`text-2xl transition-all ${isActive ? 'text-violet-400' : 'text-slate-500 group-hover:text-slate-300'}`} 
-                                />
-                            </div>
-                            <span className={`text-[10px] font-medium transition-colors ${isActive ? 'text-violet-400' : 'text-slate-500'}`}>
-                                {tab.label}
-                            </span>
-                        </button>
-                    );
-                })}
-            </div>
-        </div>
-    );
-};

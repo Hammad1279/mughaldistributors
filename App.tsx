@@ -1,7 +1,8 @@
 
+
 import React, { useState, useEffect, useCallback, createContext, useContext, ReactNode, useMemo, useRef, useLayoutEffect } from 'react';
-import { AppView, Medicine, MedicalStore, FinalizedBill, CartItem, NotificationState, NotificationType, Supplier, FinalizedPurchase, AppSection, PurchaseRowData, BillLayoutSettings, SalesSettings, MedicineDefinition, UserMedicineData, AppContextType, AppData } from './types';
-import { getInitialAppData } from './constants';
+import { AppView, Medicine, MedicalStore, FinalizedBill, CartItem, NotificationState, NotificationType, Supplier, FinalizedPurchase, AppSection, PurchaseRowData, BillLayoutSettings, SalesSettings, MedicineDefinition, UserMedicineData, AppContextType, AppData, User } from './types';
+import { INITIAL_MEDICINES_DATA } from './constants';
 
 import ManageStores from './components/ManageStores';
 import Inventory from './components/Inventory';
@@ -10,7 +11,7 @@ import YourBills from './components/YourBills';
 import Settings from './components/Settings';
 import ManageSuppliers from './components/ManageSuppliers';
 import Purchase from './components/Purchase';
-import { Icon, Modal, Button, ToggleSwitch, MobileNavBar } from './components/ui';
+import { Icon, Modal, Button, ToggleSwitch, Input } from './components/ui';
 import PurchaseHistory from './components/PurchaseHistory';
 import YourPurchases from './components/YourPurchases';
 import DiscountSheet from './components/DiscountSheet';
@@ -18,11 +19,10 @@ import Welcome from './components/Welcome';
 import ProfitReport from './components/ProfitReport';
 import Calculator from './components/Calculator';
 import { CapsLockModal } from './components/CapsLockModal';
-import './components/ContextMenu.css'; // Import the new styles
+import Auth from './components/Auth';
+import LoginLoader from './components/LoginLoader';
 
 declare var Fuse: any;
-
-const LOCAL_STORAGE_KEY = 'mughal_os_local_data';
 
 const AppContext = createContext<AppContextType | null>(null);
 export const useAppContext = () => {
@@ -37,10 +37,10 @@ const AppProvider: React.FC<{
     appData: AppData;
     updateAppData: (updater: (currentData: AppData) => AppData) => void;
     addNotification: (message: string, type?: NotificationType) => void;
-}> = ({ children, appData, updateAppData, addNotification }) => {
+    isLoggedIn: boolean;
+}> = ({ children, appData, updateAppData, addNotification, isLoggedIn }) => {
     const [activeSection, setActiveSection] = useState<AppSection>('welcome');
     const [activeView, setActiveView] = useState<AppView>('welcome');
-    const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
     
     const [transitionElement, setTransitionElement] = useState<HTMLElement | null>(null);
     const [transitionTargetView, setTransitionTargetView] = useState<AppView | null>(null);
@@ -49,13 +49,6 @@ const AppProvider: React.FC<{
         global_medicine_definitions: globalMedicines,
         user_medicine_data: userMedicineData
     } = appData;
-
-    // Handle resize for responsive layout
-    useEffect(() => {
-        const handleResize = () => setIsMobile(window.innerWidth < 768);
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
-    }, []);
 
     // --- Re-hydrating client-side state from loaded user data file ---
     const [cart, setCart] = useState<CartItem[]>(appData.cart);
@@ -101,9 +94,8 @@ const AppProvider: React.FC<{
         };
     }, []);
 
-    // Disable CapsLock requirement on mobile
     const capsLockRequired = activeView === 'create-bill';
-    const showCapsLockModal = capsLockRequired && !isCapsLockOn && !isMobile;
+    const showCapsLockModal = capsLockRequired && !isCapsLockOn;
     
     const { 
         medicalStores, finalizedBills, suppliers, finalizedPurchases,
@@ -196,13 +188,36 @@ const AppProvider: React.FC<{
         updateAppData(ad => ({ ...ad, user_medicine_data: { ...ad.user_medicine_data, [id]: { ...(ad.user_medicine_data[id] || {}), ...userUpdate } }}));
     }, [updateAppData]);
 
-    const deleteMedicine = useCallback((_medId: string) => {
+    const deleteMedicine = useCallback((medId: string) => {
         addNotification("Deleting from global inventory is not supported in this version.", "info");
     }, [addNotification]);
 
     const finalizeBill = useCallback((billData: Omit<FinalizedBill, 'billNo' | 'date'>, isEditing: boolean, billNo: number): number | null => {
         const finalBill: FinalizedBill = { ...billData, billNo: billNo, date: new Date().toISOString() };
-        updateAppData(ad => ({ ...ad, finalizedBills: isEditing ? ad.finalizedBills.map(b => b.billNo === billNo ? finalBill : b) : [...ad.finalizedBills, finalBill] }));
+        
+        updateAppData(ad => {
+            const newFinalizedBills = isEditing 
+                ? ad.finalizedBills.map(b => b.billNo === billNo ? finalBill : b) 
+                : [...ad.finalizedBills, finalBill];
+
+            const newUserMedicineData = { ...ad.user_medicine_data };
+            finalBill.items.forEach(item => {
+                if (newUserMedicineData[item.id]) {
+                    newUserMedicineData[item.id] = {
+                        ...newUserMedicineData[item.id],
+                        saleDiscount: item.discountValue,
+                        lastUpdated: new Date().toISOString()
+                    };
+                }
+            });
+
+            return {
+                ...ad,
+                finalizedBills: newFinalizedBills,
+                user_medicine_data: newUserMedicineData
+            };
+        });
+
         return finalBill.billNo;
     }, [updateAppData]);
 
@@ -385,7 +400,6 @@ const AppProvider: React.FC<{
     }, [addNotification]);
     
     const value: AppContextType = {
-        isMobile,
         medicines, medicalStores, finalizedBills, suppliers, finalizedPurchases, billLayoutSettings, salesSettings,
         updateAppData,
         cart, setCart,
@@ -416,20 +430,17 @@ const AppProvider: React.FC<{
         downloadBackup: () => {}, // Provided by App component
         importData: () => {}, // Provided by App component
         clearAllData: () => {}, // Provided by App component
+        logout: () => {}, // Provided by App component
         initiateImport: () => {}, // Provided by App component
     };
 
     return (
         <AppContext.Provider value={{...value, ...useContext(AppContext)}}>
-            <div className={`flex flex-col h-screen bg-slate-900 ${isMobile ? 'pb-16' : ''}`}>
-                <Header />
-                <div className={`flex-1 overflow-y-auto custom-scrollbar ${isMobile ? 'px-2' : ''}`}>
-                    <MainContent />
+            <div className="flex flex-col h-screen bg-slate-900">
+                <Header isAnimatingIn={isLoggedIn} />
+                <div className="flex-1 overflow-y-auto custom-scrollbar">
+                    <MainContent isAnimatingIn={isLoggedIn} />
                 </div>
-                {children}
-                {isMobile && (
-                    <MobileNavBar activeTab={activeView} onTabChange={setActiveView} />
-                )}
             </div>
             <Calculator 
                 isOpen={isCalculatorOpen}
@@ -477,17 +488,22 @@ const Notification: React.FC<NotificationState & { onClose: () => void, onExited
     );
 };
 
-const Header: React.FC = () => {
+const Header: React.FC<{ isAnimatingIn: boolean; }> = ({ isAnimatingIn }) => {
   const { 
       activeView, setActiveView, activeSection, navigateToSection, 
-      focusedMed, hoveredMed, setIsCalculatorOpen, salesSettings,
-      updateAppData, addNotification, isMobile, clearAllData
+      focusedMed, hoveredMed, setIsCalculatorOpen, salesSettings, billLayoutSettings,
+      updateAppData, addNotification, updateBillLayoutSettings, downloadBackup, logout
   } = useAppContext();
   const [isMobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number; }>({ visible: false, x: 0, y: 0 });
   const [isSettingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const settingsMenuTimeoutRef = useRef<number | null>(null);
+
+  const _updateBillLayoutSettings = useCallback((newSettings: Partial<BillLayoutSettings>) => {
+        updateBillLayoutSettings(newSettings);
+        addNotification("Bill layout settings updated.", "success");
+    }, [updateBillLayoutSettings, addNotification]);
 
     const updateSalesSettings = useCallback((newSettings: Partial<SalesSettings>) => {
         updateAppData(ad => ({ ...ad, salesSettings: { ...ad.salesSettings, ...newSettings }}));
@@ -561,14 +577,12 @@ const Header: React.FC = () => {
       }
       closeContextMenu();
   };
-
-  const handleClearData = () => {
-      if(window.confirm("Are you sure you want to clear all local app data?")) {
-          clearAllData(false);
-      }
+  
+  const handleLogoutClick = () => {
+      logout();
       closeContextMenu();
   }
-  
+
   const sectionNavItems: Record<Exclude<AppSection, 'welcome'>, { id: AppView; name: string; icon: string }[]> = {
     sales: [
         { id: 'manage-stores', name: 'Stores', icon: 'storefront' },
@@ -634,7 +648,7 @@ const Header: React.FC = () => {
 
   return (
     <>
-      <header className={`h-16 bg-[#160c2e]/90 backdrop-blur-md border-b border-white/10 flex items-center px-4 md:px-6 sticky top-0 z-[102] no-print animate-header-in`}>
+      <header className={`h-16 bg-slate-800/70 backdrop-blur-md border-b border-slate-700/80 flex items-center px-4 md:px-6 sticky top-0 z-[102] no-print ${isAnimatingIn ? 'animate-header-in' : ''}`}>
         {/* Left: Logo */}
         <div className="flex-1 flex justify-start">
             <div className="flex items-center gap-3 cursor-pointer" onClick={handleLogoClick} onContextMenu={handleLogoContextMenu}>
@@ -644,15 +658,15 @@ const Header: React.FC = () => {
                         <path d="M7 17V7L12 14L17 7V17" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                 </div>
-                <div className={isMobile ? "block" : "hidden md:block"}>
+                <div className="hidden md:block">
                     <h1 className="text-base font-bold text-white leading-tight">MUGHAL</h1>
                     <p className="text-xs text-violet-300 leading-tight">DISTRIBUTORS</p>
                 </div>
             </div>
         </div>
         
-        {/* Center: Nav - HIDE ON MOBILE */}
-        {!isMobile && activeSection !== 'welcome' && (
+        {/* Center: Nav */}
+        {activeSection !== 'welcome' && (
              <div className="flex-shrink-0">
                 <NavLinks />
             </div>
@@ -676,56 +690,80 @@ const Header: React.FC = () => {
                             {activeItemDiscount !== null ? `${activeItemDiscount}%` : ''}
                         </div>
                     </div>
+                    
+                    {/* Mobile Menu Toggle */}
+                    <button onClick={() => setMobileMenuOpen(true)} className="p-2 rounded-full hover:bg-slate-700/80 transition-colors focus:outline-none md:hidden">
+                        <Icon name="menu" className="text-xl text-slate-300" />
+                    </button>
                 </>
              )}
-             <button
-                onClick={(e) => {
-                    e.stopPropagation();
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    setContextMenu({ visible: true, x: rect.right - 190, y: rect.bottom + 8 });
-                }}
-                className="p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-full transition-all duration-200 active:scale-90"
-                title="Settings & Tools"
-            >
-                <Icon name="settings" className="text-xl" />
-            </button>
         </div>
       </header>
       
-      {/* Premium Context Menu */}
+      {/* Mobile Drawer */}
+      {isMobileMenuOpen && activeSection !== 'welcome' && (
+        <div className="fixed inset-0 z-[110] no-print" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-slate-900/70 backdrop-blur-sm animate-modal-bg" onClick={() => setMobileMenuOpen(false)}></div>
+          <div className="relative bg-slate-800 h-full w-72 max-w-[80vw] shadow-2xl flex flex-col animate-slide-in-left">
+            <div className="flex items-center justify-between p-4 border-b border-slate-700">
+              <h2 className="font-bold text-white">Menu</h2>
+              <button onClick={() => setMobileMenuOpen(false)} className="p-2 rounded-full hover:bg-slate-700/80">
+                <Icon name="close" className="text-xl" />
+              </button>
+            </div>
+            <div className="overflow-y-auto custom-scrollbar">
+              <NavLinks isMobile={true} />
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Context Menu */}
        {contextMenu.visible && (
             <div
                 ref={contextMenuRef}
                 style={{ top: contextMenu.y, left: contextMenu.x }}
-                className="context-menu-popup card"
+                className="fixed bg-slate-800/70 backdrop-blur-xl border border-slate-700/50 rounded-lg shadow-2xl p-1.5 z-[200] w-56 animate-modal-content text-sm"
                 onContextMenu={(e) => e.preventDefault()}
             >
-                <ul className="list">
-                    <li className="element" onClick={handleCalculatorClick}>
-                        <div className="menu-icon"><Icon name="calculate" /></div>
-                        <p className="label">Calculator</p>
+                <ul className="space-y-1">
+                    <li onClick={handleLogoutClick} className="flex items-center gap-3 px-3 py-1.5 text-slate-200 hover:bg-red-500 hover:text-white rounded-md cursor-pointer transition-colors">
+                        <Icon name="logout" className="w-4 text-center" />
+                        <span>Logout</span>
                     </li>
-                    <li className="element" onClick={handleSalesFocusClick}>
-                        <div className="menu-icon"><Icon name={activeSection === 'sales-only' ? 'meeting_room' : 'sensors'} /></div>
-                        <p className="label">{activeSection === 'sales-only' ? 'Exit Focus' : 'Sales Focus'}</p>
+                    <li onClick={handleCalculatorClick} className="flex items-center gap-3 px-3 py-1.5 text-slate-200 hover:bg-violet-600 hover:text-white rounded-md cursor-pointer transition-colors">
+                        <Icon name="calculate" className="w-4 text-center" />
+                        <span>Calculator</span>
                     </li>
-                </ul>
-                <div className="separator"></div>
-                <ul className="list">
+                    <li onClick={handleSalesFocusClick} className={`flex items-center gap-3 px-3 py-1.5 text-slate-200 rounded-md cursor-pointer transition-colors ${activeSection === 'sales-only' ? 'hover:bg-red-500 hover:text-white' : 'hover:bg-emerald-600 hover:text-white'}`}>
+                        {activeSection === 'sales-only' ? (
+                            <>
+                                <Icon name="meeting_room" className="w-4 text-center" />
+                                <span>Exit Focus Mode</span>
+                            </>
+                        ) : (
+                            <>
+                                <Icon name="sensors" className="w-4 text-center" />
+                                <span>Sales Focus Mode</span>
+                            </>
+                        )}
+                    </li>
                     <li 
-                        className="element" 
                         onMouseEnter={handleSettingsMenuEnter}
                         onMouseLeave={handleSettingsMenuLeave}
+                        className="relative flex justify-between items-center gap-3 px-3 py-1.5 text-slate-200 hover:bg-violet-600 hover:text-white rounded-md cursor-pointer transition-colors"
                     >
-                        <div className="menu-icon"><Icon name="settings" /></div>
-                        <p className="label">Settings</p>
-                        {/* Submenu Logic retained but integrated into the new visual structure if needed, 
-                            or rendered adjacent as before. Rendering adjacent for better UX in this tight card */}
+                        <div className="flex items-center gap-3">
+                            <Icon name="settings" className="w-4 text-center" />
+                            <span>Settings</span>
+                        </div>
+                        <Icon name="chevron_right" className="!text-xs" />
+
                         {isSettingsMenuOpen && (activeSection === 'sales' || activeSection === 'sales-only') && (
                             <div
                                 onMouseEnter={handleSettingsMenuEnter}
                                 onMouseLeave={handleSettingsMenuLeave}
-                                className="absolute right-full top-0 mr-2 bg-slate-800/90 backdrop-blur-xl border border-slate-700/50 rounded-lg shadow-2xl p-4 w-72"
+                                className="absolute left-full top-[-6px] ml-1 bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-lg shadow-2xl p-4 w-80"
                                 onClick={(e) => e.stopPropagation()}
                             >
                                 <h4 className="font-bold text-violet-300 mb-4 text-base">Sales Settings</h4>
@@ -743,25 +781,6 @@ const Header: React.FC = () => {
                                 </div>
                             </div>
                         )}
-                    </li>
-                    <li className="element" onClick={() => {
-                        const elem = document.documentElement;
-                        if (!document.fullscreenElement) {
-                            elem.requestFullscreen().catch(err => console.error(err));
-                        } else {
-                            document.exitFullscreen();
-                        }
-                        closeContextMenu();
-                    }}>
-                        <div className="menu-icon"><Icon name="fullscreen" /></div>
-                        <p className="label">Full Screen</p>
-                    </li>
-                </ul>
-                <div className="separator"></div>
-                <ul className="list">
-                    <li className="element delete" onClick={handleClearData}>
-                        <div className="menu-icon"><Icon name="delete_forever" /></div>
-                        <p className="label">Reset Data</p>
                     </li>
                 </ul>
             </div>
@@ -808,7 +827,7 @@ const SectionTransition: React.FC<{
     useLayoutEffect(() => {
         if (!element) return;
         
-        const headerHeight = 64; 
+        const headerHeight = 64; // Corresponds to h-16 in Tailwind (4rem)
         const firstRect = element.getBoundingClientRect();
         const styles = window.getComputedStyle(element);
         const bgColor = styles.backgroundColor;
@@ -863,83 +882,135 @@ const SectionTransition: React.FC<{
     );
 };
 
+const USERS_LIST_KEY = 'mughal_os_users_list';
+const LAST_USER_KEY = 'mughal_os_last_user';
+const getUserDataKey = (username: string) => `mughal_os_data_${username.toLowerCase()}`;
 
-const MainContent: React.FC = () => {
-    const { activeView, transitionElement } = useAppContext();
+const getInitialAppData = (): AppData => {
+    const initialGlobalDefs: MedicineDefinition[] = INITIAL_MEDICINES_DATA.map(med => ({
+        id: crypto.randomUUID(),
+        name: med.name,
+        company: med.company,
+        type: med.type,
+        tags: med.name.toLowerCase().split(/\s+/).filter(Boolean),
+    }));
 
-    const renderView = () => {
-        switch (activeView) {
-            case 'welcome': return <Welcome isExiting={!!transitionElement} />;
-            case 'manage-stores': return <ManageStores />;
-            case 'create-bill': return <CreateBill />;
-            case 'your-bills': return <YourBills />;
-            case 'inventory': return <Inventory />;
-            case 'settings': return <Settings />;
-            case 'manage-suppliers': return <ManageSuppliers />;
-            case 'purchase-entry': return <Purchase />;
-            case 'purchase-history': return <PurchaseHistory />;
-            case 'your-purchases': return <YourPurchases />;
-            case 'discount-sheet': return <DiscountSheet />;
-            case 'profit-report': return <ProfitReport />;
-            default: return <Welcome isExiting={!!transitionElement} />;
-        }
+    const initialUserMedicineData: Record<string, UserMedicineData> = {};
+    initialGlobalDefs.forEach((def, index) => {
+        const initialMed = INITIAL_MEDICINES_DATA[index];
+        initialUserMedicineData[def.id] = {
+            price: null,
+            discount: initialMed.discount,
+            saleDiscount: initialMed.saleDiscount,
+            batchNo: '',
+            lastUpdated: new Date(0).toISOString(),
+        };
+    });
+
+    return {
+        version: '1.0.0',
+        global_medicine_definitions: initialGlobalDefs,
+        user_medicine_data: initialUserMedicineData,
+        medicalStores: [],
+        finalizedBills: [],
+        suppliers: [],
+        finalizedPurchases: [],
+        billLayoutSettings: {
+            distributorName: 'Mughal Distributors',
+            distributorTitle: 'ESTIMATE',
+            distributorAddressLine1: 'Bismillah Plaza, Opp. Sonari Bank',
+            distributorAddressLine2: 'Chinioat Bazar, Faisalabad',
+            footerText: '',
+            showPhoneNumber: true,
+            showBillDate: true,
+            phoneNumber: '03040297400'
+        },
+        salesSettings: { showSalesTaxColumn: false, showBatchNo: false },
+        cart: [],
+        purchaseCart: {},
+        purchaseCartOrder: [],
+        currentBillingStoreID: null,
+        currentPurchaseSupplierID: null,
+        currentViewingSupplierId: null,
+        editingBillNo: null,
+        editingPurchaseId: null,
+        billFilterStoreID: null,
     };
-    return (
-        <main className={`flex-1 animate-main-in`}>
-            {renderView()}
-        </main>
-    )
-}
+};
+
 
 export default function App() {
     const [appData, setAppData] = useState<AppData | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [notifications, setNotifications] = useState<NotificationState[]>([]);
-    const [importFileContent, setImportFileContent] = useState<string | null>(null);
     
-    const appDataRef = useRef(appData);
-    const debounceTimeout = useRef<number | null>(null);
+    const [users, setUsers] = useState<User[]>([]);
+    const [currentUser, setCurrentUser] = useState<string | null>(null);
+    const [authExiting, setAuthExiting] = useState(false);
+    const [postLoginLoading, setPostLoginLoading] = useState(false);
 
-    // Keep ref in sync
+    const [importFileContent, setImportFileContent] = useState<string | null>(null);
+    const [isGlobalDragging, setIsGlobalDragging] = useState(false);
+    
+    // Load users list on initial render
     useEffect(() => {
-        appDataRef.current = appData;
-    }, [appData]);
+        try {
+            const savedUsers = localStorage.getItem(USERS_LIST_KEY);
+            if (savedUsers) {
+                setUsers(JSON.parse(savedUsers));
+            }
+        } catch (error) {
+            console.error("Failed to load users list from local storage:", error);
+        } finally {
+            setIsLoading(false);
+        }
+    }, []);
 
-    // --- Local Storage Data Listener ---
+    // Load user-specific data when currentUser changes
     useEffect(() => {
-        const storedData = localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (storedData) {
+        if (currentUser) {
+            setIsLoading(true);
             try {
-                setAppData(JSON.parse(storedData));
-            } catch (e) {
-                console.error("Failed to parse local data", e);
-                setAppData(getInitialAppData());
+                const userKey = getUserDataKey(currentUser);
+                const savedData = localStorage.getItem(userKey);
+                if (savedData) {
+                    setAppData(JSON.parse(savedData));
+                } else {
+                    // This case handles a newly signed-up user
+                    setAppData(getInitialAppData());
+                }
+            } catch (error) {
+                console.error(`Failed to load data for user ${currentUser}:`, error);
+                setAppData(getInitialAppData()); // Load fresh data on error
+            } finally {
+                setIsLoading(false);
             }
         } else {
-            setAppData(getInitialAppData());
+            setAppData(null); // Clear data on logout
         }
-        setIsLoading(false);
-    }, []);
+    }, [currentUser]);
 
-    const updateAppData = useCallback((updater: (currentData: AppData) => AppData) => {
-        if (!appDataRef.current) return;
-    
-        const newData = updater(appDataRef.current);
-        setAppData(newData); // Optimistic UI update
-    
-        if (debounceTimeout.current) {
-            clearTimeout(debounceTimeout.current);
-        }
-    
-        debounceTimeout.current = window.setTimeout(() => {
+    // Auto-save user-specific data to localStorage
+    useEffect(() => {
+        if (appData && !isLoading && currentUser) {
             try {
-                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newData));
-            } catch (err) {
-                console.error("Failed to save data locally:", err);
+                localStorage.setItem(getUserDataKey(currentUser), JSON.stringify(appData));
+            } catch (error) {
+                console.error("Failed to save user data to local storage:", error);
             }
-        }, 1000); // 1 second debounce
-    }, []);
+        }
+    }, [appData, isLoading, currentUser]);
 
+    // Auto-save users list to localStorage
+    useEffect(() => {
+        if (!isLoading) {
+            try {
+                localStorage.setItem(USERS_LIST_KEY, JSON.stringify(users));
+            } catch (error) {
+                console.error("Failed to save users list to local storage:", error);
+            }
+        }
+    }, [users, isLoading]);
 
     const startExitAnimation = useCallback((id: number) => {
         setNotifications(current =>
@@ -960,55 +1031,111 @@ export default function App() {
     }, [startExitAnimation]);
 
     const downloadBackup = useCallback(() => {
-        if (!appData) {
+        if (!appData || !currentUser) {
             addNotification("No data to create a backup from.", "warning");
             return;
         }
+        addNotification("Preparing your backup file...", "info");
         try {
-            const blob = new Blob([JSON.stringify(appData, null, 2)], { type: 'application/json' });
+            // Create a clean version for export, removing transient state
+            const cleanData: AppData = {
+                ...appData,
+                cart: [],
+                purchaseCart: {},
+                purchaseCartOrder: [],
+                currentBillingStoreID: null,
+                currentPurchaseSupplierID: null,
+                currentViewingSupplierId: null,
+                editingBillNo: null,
+                editingPurchaseId: null,
+                billFilterStoreID: null
+            };
+            
+            const blob = new Blob([JSON.stringify(cleanData, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `mughal_os_backup_${new Date().toISOString().slice(0, 10)}.json`;
+            a.download = `mughal_os_backup_${currentUser}_${new Date().toISOString().slice(0, 10)}.json`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            addNotification("Backup data file saved.", "success");
+            addNotification("Backup data file saved successfully.", "success");
         } catch (error) {
-            console.error("Save failed:", error);
-            addNotification("Failed to save backup file.", "error");
+            console.error("Backup failed:", error);
+            addNotification("Failed to create backup file.", "error");
         }
-    }, [appData, addNotification]);
+    }, [appData, addNotification, currentUser]);
     
-    const importData = useCallback(async (jsonData: string) => {
+    const importData = useCallback((jsonData: string) => {
+        if (!currentUser) {
+            addNotification("No user is logged in to import data for.", "error");
+            return;
+        }
         try {
             let importedData = JSON.parse(jsonData);
             const defaults = getInitialAppData();
-            const finalData = { ...defaults, ...importedData };
-            
-            setAppData(finalData);
-            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(finalData));
-            
-            addNotification("Data imported successfully! The app will now use the new data.", "success");
-        } catch (error: any) {
-            console.error("Import failed:", error);
-            let message = "Failed to import data. The file may be corrupted.";
-            if (error instanceof SyntaxError) {
-                message = "Import failed: The file is not valid JSON.";
+
+            // --- Migration/Compatibility Layer for older backup formats ---
+            if (importedData.medicineDefinitions && !importedData.global_medicine_definitions) {
+                importedData.global_medicine_definitions = importedData.medicineDefinitions;
+                delete importedData.medicineDefinitions;
             }
-            addNotification(message, "error");
+            if (importedData.userMedicineData && !importedData.user_medicine_data) {
+                importedData.user_medicine_data = importedData.userMedicineData;
+                delete importedData.userMedicineData;
+            }
+
+            // Ensure all top-level keys exist and merge nested settings objects
+            const finalData = {
+                ...defaults,
+                ...importedData,
+                billLayoutSettings: {
+                    ...defaults.billLayoutSettings,
+                    ...(importedData.billLayoutSettings || {})
+                },
+                salesSettings: {
+                    ...defaults.salesSettings,
+                    ...(importedData.salesSettings || {})
+                }
+            };
+
+            // --- Final Validation ---
+            if (
+                !Array.isArray(finalData.global_medicine_definitions) ||
+                !Array.isArray(finalData.medicalStores) ||
+                !Array.isArray(finalData.finalizedBills) ||
+                !Array.isArray(finalData.suppliers)
+            ) {
+                throw new Error("Invalid file format after migration attempt.");
+            }
+
+            localStorage.setItem(getUserDataKey(currentUser), JSON.stringify(finalData));
+            addNotification("Data imported successfully! The application will now reload.", "success");
+            setTimeout(() => window.location.reload(), 1500);
+        } catch (error) {
+            console.error("Import failed:", error);
+            addNotification("Failed to import data. The file may be corrupted or in the wrong format.", "error");
         }
-    }, [addNotification]);
+    }, [currentUser, addNotification]);
     
     const initiateImport = useCallback((file: File | null | undefined) => {
         if (file && (file.type === 'application/json' || file.name.endsWith('.json'))) {
+            addNotification("Reading backup file...", "info");
             const reader = new FileReader();
             reader.onload = (event) => {
-                setImportFileContent(event.target?.result as string);
+                try {
+                    const content = event.target?.result as string;
+                    // Pre-validate JSON before showing confirmation modal
+                    JSON.parse(content); 
+                    setImportFileContent(content);
+                } catch (e) {
+                    addNotification("Import failed: Invalid or corrupted JSON file.", "error");
+                    setImportFileContent(null);
+                }
             };
             reader.onerror = () => {
-                addNotification("Failed to read file.", "error");
+                addNotification("Failed to read the selected file.", "error");
             };
             reader.readAsText(file);
         } else if (file) {
@@ -1023,17 +1150,37 @@ export default function App() {
             e.stopPropagation();
         };
 
+        const handleDragEnter = (e: DragEvent) => {
+            preventDefaults(e);
+            if (e.dataTransfer?.items && e.dataTransfer.items.length > 0) {
+                setIsGlobalDragging(true);
+            }
+        };
+
+        const handleDragLeave = (e: DragEvent) => {
+            preventDefaults(e);
+            const relatedTarget = e.relatedTarget as Node;
+            if (!relatedTarget || (relatedTarget.nodeName === "HTML")) {
+                setIsGlobalDragging(false);
+            }
+        };
+
         const handleDrop = (e: DragEvent) => {
             preventDefaults(e);
+            setIsGlobalDragging(false);
             if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
                 initiateImport(e.dataTransfer.files[0]);
             }
         };
 
+        window.addEventListener('dragenter', handleDragEnter, false);
+        window.addEventListener('dragleave', handleDragLeave, false);
         window.addEventListener('dragover', preventDefaults, false);
         window.addEventListener('drop', handleDrop, false);
 
         return () => {
+            window.removeEventListener('dragenter', handleDragEnter, false);
+            window.removeEventListener('dragleave', handleDragLeave, false);
             window.removeEventListener('dragover', preventDefaults, false);
             window.removeEventListener('drop', handleDrop, false);
         };
@@ -1046,36 +1193,84 @@ export default function App() {
         setImportFileContent(null);
     };
 
-    const clearAllData = useCallback(async (clearSharedData = false) => {
-        try {
-            const freshData = getInitialAppData();
-            setAppData(freshData);
-            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(freshData));
-            
-            addNotification(`All data has been reset.`, "success");
-        } catch (error) {
-            console.error("Failed to clear data:", error);
-            addNotification(`Failed to clear data.`, "error");
+    const clearAllData = useCallback(() => {
+        if (!currentUser) return;
+        
+        localStorage.removeItem(getUserDataKey(currentUser));
+        addNotification(`Data for user "${currentUser}" cleared. Reloading application.`, "success");
+        setTimeout(() => window.location.reload(), 1500);
+
+    }, [currentUser]);
+
+    const handleLoginSuccess = (username: string) => {
+        setAuthExiting(true);
+        localStorage.setItem(LAST_USER_KEY, username);
+        // After auth screen animates out (600ms)...
+        setTimeout(() => {
+            // Show the loader immediately
+            setPostLoginLoading(true);
+            // Set the current user to trigger background data loading
+            setCurrentUser(username);
+
+            // After 5 seconds, hide the loader to reveal the app
+            setTimeout(() => {
+                setPostLoginLoading(false);
+            }, 5000); // 5-second delay as requested
+        }, 600);
+    };
+    
+    const handleLogout = () => {
+        setCurrentUser(null);
+        setAuthExiting(false);
+    };
+
+    const handleSignUp = (newUser: Omit<User, 'id'>): boolean => {
+        const usernameExists = users.some(u => u.username.toLowerCase() === newUser.username.toLowerCase());
+        if (usernameExists) {
+            return false;
         }
-    }, [addNotification]);
+        const userWithId: User = { ...newUser, id: crypto.randomUUID() };
+        setUsers(prev => [...prev, userWithId]);
+        // The useEffect for data loading will handle creating initial data
+        return true;
+    };
+
+    const isLoggedIn = !!currentUser;
 
     return (
         <>
-            {/* Main App Logic */}
-            { (isLoading || !appData) ? (
-                <div className="fixed inset-0 flex items-center justify-center bg-slate-900 text-white animate-pulse"><p>Loading App Data...</p></div>
-            ) : (
-                <AppContext.Provider value={{ downloadBackup, importData, initiateImport, clearAllData } as any}>
-                     <AppProvider
-                        appData={appData}
-                        updateAppData={updateAppData as any}
-                        addNotification={addNotification}
-                    >
-                        <GlobalKeyboardShortcuts />
-                    </AppProvider>
-                </AppContext.Provider>
-            )}
+            {postLoginLoading && <LoginLoader />}
 
+            {/* The main application is always rendered in the background to preload components, but remains invisible until login. */}
+            <div style={{ visibility: isLoggedIn && !postLoginLoading ? 'visible' : 'hidden' }}>
+                { (isLoading || !appData) && isLoggedIn ? (
+                    <div className="fixed inset-0 flex items-center justify-center bg-slate-900"><p>Loading App Data...</p></div>
+                ) : appData ? (
+                    <AppContext.Provider value={{ downloadBackup, importData, initiateImport, clearAllData, logout: handleLogout } as any}>
+                         <AppProvider
+                            appData={appData}
+                            updateAppData={setAppData as (updater: (currentData: AppData) => AppData) => void}
+                            addNotification={addNotification}
+                            isLoggedIn={isLoggedIn}
+                        >
+                            <GlobalKeyboardShortcuts />
+                        </AppProvider>
+                    </AppContext.Provider>
+                ) : null }
+            </div>
+
+            {/* The authentication screen is only rendered when not logged in. */}
+            {!isLoggedIn && (
+                <div className={`auth-container ${authExiting ? 'animate-auth-exit' : ''}`}>
+                    <Auth 
+                        addNotification={addNotification} 
+                        onLoginSuccess={handleLoginSuccess}
+                        onSignUp={handleSignUp}
+                        users={users}
+                    />
+                </div>
+            )}
+            
             <div className="fixed bottom-6 right-6 z-[201] flex flex-col gap-2 w-60 sm:w-72 text-xs sm:text-sm">
                 {notifications.map(n => 
                     <Notification 
@@ -1092,7 +1287,7 @@ export default function App() {
                     <Icon name="warning" className="text-5xl text-amber-400 mx-auto mb-4" />
                     <h3 className="text-xl font-bold text-slate-100">Overwrite Existing Data?</h3>
                     <p className="text-slate-300 mt-2">
-                        Importing this file will completely replace all of your current data.
+                        Importing this file will completely replace all of your current data, including bills, stores, suppliers, and inventory settings. 
                         This action cannot be undone.
                     </p>
                     <p className="text-slate-300 mt-4">
@@ -1104,6 +1299,42 @@ export default function App() {
                     <Button variant="danger" onClick={handleConfirmImport} className="w-48" autoFocus>Yes, Import and Overwrite</Button>
                 </div>
             </Modal>
+            
+            {isGlobalDragging && (
+                <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[999] flex items-center justify-center pointer-events-none rounded-lg">
+                    <div className="border-4 border-dashed border-violet-500 rounded-2xl p-16 text-center">
+                        <Icon name="upload_file" className="text-6xl text-violet-400 mb-4" />
+                        <p className="text-xl font-bold text-slate-200">Drop backup file to import</p>
+                    </div>
+                </div>
+            )}
         </>
     );
+}
+
+const MainContent: React.FC<{ isAnimatingIn: boolean; }> = ({ isAnimatingIn }) => {
+    const { activeView, transitionElement } = useAppContext();
+
+    const renderView = () => {
+        switch (activeView) {
+            case 'welcome': return <Welcome isExiting={!!transitionElement} />;
+            case 'manage-stores': return <ManageStores />;
+            case 'create-bill': return <CreateBill />;
+            case 'your-bills': return <YourBills />;
+            case 'inventory': return <Inventory />;
+            case 'settings': return <Settings />;
+            case 'manage-suppliers': return <ManageSuppliers />;
+            case 'purchase-entry': return <Purchase />;
+            case 'purchase-history': return <PurchaseHistory />;
+            case 'your-purchases': return <YourPurchases />;
+            case 'discount-sheet': return <DiscountSheet />;
+            case 'profit-report': return <ProfitReport />;
+            default: return <Welcome isExiting={!!transitionElement} />;
+        }
+    };
+    return (
+        <main className={`flex-1 ${isAnimatingIn ? 'animate-main-in' : ''}`}>
+            {renderView()}
+        </main>
+    )
 }

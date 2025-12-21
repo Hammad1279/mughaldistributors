@@ -1,5 +1,13 @@
 
+
 import React from 'react';
+
+// --- USER AUTHENTICATION ---
+export interface User {
+  id: string;
+  username: string;
+  password: string; // This will be stored base64 encoded, not plaintext.
+}
 
 // --- LOCAL STORAGE DATA STRUCTURE (PER-USER) ---
 export interface AppData {
@@ -159,7 +167,7 @@ export interface CellStyle {
   fontWeight?: string | number;
   fontStyle?: string;
   textDecoration?: string;
-  textAlign?: 'left' | 'right' | 'center' | 'justify';
+  textAlign?: string;
   verticalAlign?: string | number;
   backgroundColor?: string;
   color?: string;
@@ -191,8 +199,6 @@ export interface ChartConfig {
 
 // --- APP CONTEXT ---
 export interface AppContextType {
-    isMobile: boolean; // New flag for responsive logic
-
     // Data collections (from app state)
     medicines: Medicine[];
     medicalStores: MedicalStore[];
@@ -268,4 +274,5 @@ export interface AppContextType {
     importData: (jsonData: string) => void;
     initiateImport: (file: File) => void;
     clearAllData: (clearSharedData?: boolean) => void;
+    logout: () => void;
 }

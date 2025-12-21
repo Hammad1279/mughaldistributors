@@ -1,10 +1,8 @@
-
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAppContext } from '../App';
 import { MedicalStore } from '../types';
-import { Button, Input, Textarea, Icon, Modal, SearchInput } from './ui';
+import { Button, Input, Textarea, Icon, Modal, Card, SearchInput } from './ui';
 import StoreListItem from './StoreListItem';
-import LightRays from './LightRays';
 
 declare var Fuse: any;
 
@@ -102,10 +100,7 @@ const StoreForm = ({
                     onKeyDown={handleKeyDown}
                 />
                 {nameIsDuplicate && (
-                    <p className="form-error-message">
-                        <Icon name="error" className="!text-base" />
-                        <span>This store name already exists.</span>
-                    </p>
+                     <p className="text-red-400 text-sm mt-1.5">This store name already exists.</p>
                 )}
             </div>
             <div>
@@ -132,17 +127,6 @@ const StoreForm = ({
     );
 };
 
-const GlowButton = ({ children, onClick, className = '', icon }: any) => (
-    <button 
-      onClick={onClick} 
-      className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold transition-all duration-300 active:scale-95 text-sm 
-      bg-indigo-600 hover:bg-indigo-500 text-white shadow-[0_0_20px_rgba(79,70,229,0.3)] hover:shadow-[0_0_30px_rgba(79,70,229,0.5)] 
-      border border-indigo-500/50 ${className}`}
-    >
-      {icon && <Icon name={icon} className="text-xl" />}
-      {children}
-    </button>
-);
 
 export default function ManageStores() {
     const { medicalStores, addMedicalStore, updateMedicalStore, deleteMedicalStore, startBillingForStore, addNotification, activeView, viewBillsForStore } = useAppContext();
@@ -161,7 +145,7 @@ export default function ManageStores() {
     const filteredStores = useMemo(() => {
         const sortedStores = [...medicalStores].sort((a, b) => a.name.localeCompare(b.name));
         if (!searchTerm.trim()) return sortedStores;
-        return storeFuse.search(searchTerm.trim()).map((result: any) => result.item as MedicalStore);
+        return storeFuse.search(searchTerm.trim()).map((result: any) => result.item);
     }, [searchTerm, medicalStores, storeFuse]);
     
     const allStoreNames = useMemo(() => medicalStores.map(s => s.name.trim().toLowerCase()), [medicalStores]);
@@ -296,26 +280,11 @@ export default function ManageStores() {
 
 
     return (
-        // Applied Theme: Chinese Black Background
-        <div className="h-full flex flex-col py-4 md:py-6 animate-fade-in space-y-6 bg-[#0D0E20] relative overflow-hidden">
-            {/* Added LightRays background */}
-            <div className="absolute inset-0 z-0 pointer-events-none">
-                <LightRays 
-                    raysOrigin="top-center" 
-                    raysColor="#5b21b6" // Violet-800
-                    raysSpeed={0.2} 
-                    lightSpread={0.6}
-                    rayLength={1.2} 
-                    fadeDistance={0.6}
-                    mouseInfluence={0.05}
-                />
-            </div>
-
-            <header className="page-header flex-shrink-0 flex flex-col md:flex-row justify-between items-center gap-4 border-[#2D1C7F] relative z-10 px-4 md:px-6">
+        <div className="h-full flex flex-col p-4 md:p-6 animate-fade-in space-y-6">
+            <header className="page-header flex-shrink-0 flex flex-col md:flex-row justify-between items-center gap-4">
                 <div>
-                  {/* Theme Text Colors: Vodka & Max Blue Purple */}
-                  <h1 className="text-3xl md:text-4xl font-bold text-[#C8B3F6] tracking-tight">Manage Stores</h1>
-                  <p className="text-[#B0A9E5] mt-1">Add, edit, or start a bill for a customer.</p>
+                  <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight">Manage Stores</h1>
+                  <p className="text-slate-400 mt-1">Add, edit, or start a bill for a customer.</p>
                 </div>
                 
                 <div className="flex w-full md:w-auto gap-4 flex-col md:flex-row md:items-stretch">
@@ -326,24 +295,16 @@ export default function ManageStores() {
                         onClear={() => setSearchTerm('')}
                         placeholder="Search Medical Store..."
                         className="w-full md:w-auto"
-                        // Theme: Persian Indigo BG, Majorelle Blue Border
-                        style={{'--width-of-input': '300px', '--input-bg': '#2D1C7F', '--border-color': '#7546E8', color: '#C8B3F6'} as React.CSSProperties}
+                        style={{'--width-of-input': '300px'} as React.CSSProperties}
                     />
-                    {/* Theme: Majorelle Blue Button */}
-                    <Button 
-                        onClick={handleOpenAddModal} 
-                        variant="primary" 
-                        icon="add" 
-                        className="w-full md:w-auto !h-[44px] !bg-[#7546E8] hover:!bg-[#5e35b1] text-white shadow-[0_0_15px_rgba(117,70,232,0.3)] border border-[#7546E8]"
-                    >
+                    <Button onClick={handleOpenAddModal} variant="primary" icon="add" className="w-full md:w-auto">
                         New Store
                     </Button>
                 </div>
             </header>
             
-            <main className="flex-grow overflow-hidden flex flex-col relative z-10">
-                {/* Theme: Persian Indigo Container with Border */}
-                <div className="store-list-container flex-grow overflow-y-auto custom-scrollbar !bg-[#2D1C7F]/10 !border-[#7546E8]/30 !rounded-none !border-x-0">
+            <main className="flex-grow overflow-hidden flex flex-col">
+                <div className="store-list-container flex-grow overflow-y-auto custom-scrollbar">
                     {filteredStores.length > 0 ? (
                         <ul ref={listRef} className="store-list">
                             {filteredStores.map(store => (
@@ -361,65 +322,11 @@ export default function ManageStores() {
                             ))}
                         </ul>
                     ) : (
-                         <div className="w-full h-full">
-                            <style>{`
-                                @keyframes blob {
-                                0% { transform: translate(0px, 0px) scale(1); }
-                                33% { transform: translate(30px, -50px) scale(1.1); }
-                                66% { transform: translate(-20px, 20px) scale(0.9); }
-                                100% { transform: translate(0px, 0px) scale(1); }
-                                }
-                                .animate-blob {
-                                animation: blob 7s infinite;
-                                }
-                                .animation-delay-2000 {
-                                animation-delay: 2s;
-                                }
-                                .animation-delay-4000 {
-                                animation-delay: 4s;
-                                }
-                            `}</style>
-
-                            <div className="relative w-full h-full bg-slate-950 overflow-hidden flex items-center justify-center">
-                                
-                                <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600/20 rounded-full mix-blend-screen filter blur-[100px] opacity-70 animate-blob"></div>
-                                
-                                <div className="absolute bottom-0 left-0 w-96 h-96 bg-purple-600/20 rounded-full mix-blend-screen filter blur-[100px] opacity-70 animate-blob animation-delay-2000"></div>
-                                
-                                <div className="absolute -bottom-32 left-1/2 transform -translate-x-1/2 w-80 h-80 bg-blue-600/20 rounded-full mix-blend-screen filter blur-[100px] opacity-50 animate-blob animation-delay-4000"></div>
-
-                                <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-[1px]"></div>
-
-                                <div className="relative z-10 flex flex-col items-center text-center p-8 animate-fade-in">
-                                
-                                <div className="relative mb-8 group cursor-default">
-                                    <div className="absolute inset-0 bg-indigo-500 rounded-full blur-xl opacity-20 group-hover:opacity-40 transition-opacity duration-500"></div>
-                                    <div className="relative bg-slate-900 border border-slate-700/50 p-6 rounded-full shadow-xl">
-                                    <Icon name={searchTerm ? "search_off" : "storefront"} className="text-5xl text-indigo-400 drop-shadow-[0_0_10px_rgba(129,140,248,0.5)]" />
-                                    </div>
-                                </div>
-
-                                <h3 className="text-2xl font-bold text-white mb-3 tracking-tight drop-shadow-md">
-                                    {searchTerm ? "No Stores Found" : "No Stores Found"}
-                                </h3>
-                                <p className="text-slate-400 max-w-md mb-10 leading-relaxed text-sm">
-                                    {searchTerm 
-                                        ? `Your search for "${searchTerm}" didn't match any stores.` 
-                                        : <>You haven't added any medical stores to your distribution list yet. <br className="hidden sm:block" /> Add one to get started with your sales.</>}
-                                </p>
-
-                                {searchTerm ? (
-                                    <GlowButton onClick={() => setSearchTerm('')} icon="close">
-                                        Clear Search
-                                    </GlowButton>
-                                ) : (
-                                    <GlowButton onClick={handleOpenAddModal} icon="add">
-                                        Add First Store
-                                    </GlowButton>
-                                )}
-                                
-                                </div>
-
+                         <div className="flex items-center justify-center h-full text-center text-slate-400 p-8">
+                            <div>
+                                <Icon name="no_store" className="text-5xl mb-4" />
+                                <h3 className="text-xl font-semibold text-slate-300">No Stores Found</h3>
+                                <p>{searchTerm ? `Your search for "${searchTerm}" didn't match any stores.` : 'Click "New Store" to add a customer.'}</p>
                             </div>
                         </div>
                     )}
@@ -454,20 +361,20 @@ export default function ManageStores() {
             {contextMenu.visible && contextStore && (
                  <div
                     style={{ top: contextMenu.y, left: contextMenu.x }}
-                    className="fixed bg-[#2D1C7F]/90 backdrop-blur-xl border border-[#7546E8]/50 rounded-lg shadow-2xl p-1.5 z-50 w-56 animate-modal-content text-sm"
+                    className="fixed bg-slate-800/70 backdrop-blur-xl border border-slate-700/50 rounded-lg shadow-2xl p-1.5 z-50 w-56 animate-modal-content text-sm"
                     onContextMenu={(e) => e.preventDefault()}
                     onClick={(e) => e.stopPropagation()}
                 >
                     <ul className="space-y-1">
-                        <li onClick={() => startBillingForStore(contextStore.id)} className="flex items-center gap-3 px-3 py-1.5 text-[#C8B3F6] hover:bg-[#7546E8] hover:text-white rounded-md cursor-pointer transition-colors">
+                        <li onClick={() => startBillingForStore(contextStore.id)} className="flex items-center gap-3 px-3 py-1.5 text-slate-200 hover:bg-violet-600 hover:text-white rounded-md cursor-pointer transition-colors">
                             <Icon name="receipt_long" className="w-4 text-center" />
                             <span>Create Bill</span>
                         </li>
-                        <li onClick={() => handleEdit(contextStore)} className="flex items-center gap-3 px-3 py-1.5 text-[#C8B3F6] hover:bg-[#7546E8] hover:text-white rounded-md cursor-pointer transition-colors">
+                        <li onClick={() => handleEdit(contextStore)} className="flex items-center gap-3 px-3 py-1.5 text-slate-200 hover:bg-violet-600 hover:text-white rounded-md cursor-pointer transition-colors">
                             <Icon name="edit" className="w-4 text-center" />
                             <span>Edit Store...</span>
                         </li>
-                         <li onClick={() => viewBillsForStore(contextStore.id)} className="flex items-center gap-3 px-3 py-1.5 text-[#C8B3F6] hover:bg-[#7546E8] hover:text-white rounded-md cursor-pointer transition-colors">
+                         <li onClick={() => viewBillsForStore(contextStore.id)} className="flex items-center gap-3 px-3 py-1.5 text-slate-200 hover:bg-violet-600 hover:text-white rounded-md cursor-pointer transition-colors">
                             <Icon name="history" className="w-4 text-center" />
                             <span>View Bills</span>
                         </li>
