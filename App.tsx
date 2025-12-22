@@ -59,21 +59,28 @@ const AppProvider: React.FC<{
     const [transitionElement, setTransitionElement] = useState<HTMLElement | null>(null);
     const [transitionTargetView, setTransitionTargetView] = useState<AppView | null>(null);
     
-    const { 
-        global_medicine_definitions: globalMedicines,
-        user_medicine_data: userMedicineData
-    } = appData;
+    // SAFEGUARD: Explicitly handle null/undefined for all data arrays.
+    // Destructuring defaults like `{ stores = [] } = appData` do NOT catch `null`, only `undefined`.
+    const globalMedicines = appData?.global_medicine_definitions || [];
+    const userMedicineData = appData?.user_medicine_data || {};
+    const medicalStores = appData?.medicalStores || [];
+    const finalizedBills = appData?.finalizedBills || [];
+    const suppliers = appData?.suppliers || [];
+    const finalizedPurchases = appData?.finalizedPurchases || [];
+    const billLayoutSettings = appData?.billLayoutSettings || initialAppData.billLayoutSettings;
+    const salesSettings = appData?.salesSettings || initialAppData.salesSettings;
 
     // --- Re-hydrating client-side state from loaded user data file ---
-    const [cart, setCart] = useState<CartItem[]>(appData.cart);
-    const [purchaseCart, setPurchaseCart] = useState<Record<string, PurchaseRowData>>(appData.purchaseCart);
-    const [purchaseCartOrder, setPurchaseCartOrder] = useState<string[]>(appData.purchaseCartOrder);
-    const [currentBillingStoreID, setCurrentBillingStoreID] = useState<string | null>(appData.currentBillingStoreID);
-    const [currentPurchaseSupplierID, setCurrentPurchaseSupplierID] = useState<string | null>(appData.currentPurchaseSupplierID);
-    const [currentViewingSupplierId, setCurrentViewingSupplierId] = useState<string | null>(appData.currentViewingSupplierId);
-    const [editingBillNo, setEditingBillNo] = useState<number | null>(appData.editingBillNo);
-    const [editingPurchaseId, setEditingPurchaseId] = useState<number | null>(appData.editingPurchaseId);
-    const [billFilterStoreID, setBillFilterStoreID] = useState<string | null>(appData.billFilterStoreID);
+    // Ensure nested objects/arrays are safe even if appData is partial
+    const [cart, setCart] = useState<CartItem[]>(appData?.cart || []);
+    const [purchaseCart, setPurchaseCart] = useState<Record<string, PurchaseRowData>>(appData?.purchaseCart || {});
+    const [purchaseCartOrder, setPurchaseCartOrder] = useState<string[]>(appData?.purchaseCartOrder || []);
+    const [currentBillingStoreID, setCurrentBillingStoreID] = useState<string | null>(appData?.currentBillingStoreID || null);
+    const [currentPurchaseSupplierID, setCurrentPurchaseSupplierID] = useState<string | null>(appData?.currentPurchaseSupplierID || null);
+    const [currentViewingSupplierId, setCurrentViewingSupplierId] = useState<string | null>(appData?.currentViewingSupplierId || null);
+    const [editingBillNo, setEditingBillNo] = useState<number | null>(appData?.editingBillNo || null);
+    const [editingPurchaseId, setEditingPurchaseId] = useState<number | null>(appData?.editingPurchaseId || null);
+    const [billFilterStoreID, setBillFilterStoreID] = useState<string | null>(appData?.billFilterStoreID || null);
     
     // --- Save client state back to the main data object before saving to file ---
     useEffect(() => { updateAppData(ud => ({ ...ud, cart })); }, [cart, updateAppData]);
@@ -111,12 +118,10 @@ const AppProvider: React.FC<{
     const capsLockRequired = activeView === 'create-bill';
     const showCapsLockModal = capsLockRequired && !isCapsLockOn;
     
-    const { 
-        medicalStores, finalizedBills, suppliers, finalizedPurchases,
-        billLayoutSettings, salesSettings
-    } = appData;
-    
     const medicines = useMemo<Medicine[]>(() => {
+        // Strict safety check
+        if (!globalMedicines || !Array.isArray(globalMedicines)) return [];
+        
         return globalMedicines.map(def => {
             const userData = userMedicineData[def.id];
             return {
@@ -172,15 +177,15 @@ const AppProvider: React.FC<{
 
     // Data manipulation functions
     const addMedicalStore = useCallback((store: Omit<MedicalStore, 'id'>) => {
-        updateAppData(ad => ({ ...ad, medicalStores: [...ad.medicalStores, { ...store, id: crypto.randomUUID() }] }));
+        updateAppData(ad => ({ ...ad, medicalStores: [...(ad.medicalStores || []), { ...store, id: crypto.randomUUID() }] }));
     }, [updateAppData]);
 
     const updateMedicalStore = useCallback((store: MedicalStore) => {
-        updateAppData(ad => ({ ...ad, medicalStores: ad.medicalStores.map(s => s.id === store.id ? store : s) }));
+        updateAppData(ad => ({ ...ad, medicalStores: (ad.medicalStores || []).map(s => s.id === store.id ? store : s) }));
     }, [updateAppData]);
 
     const deleteMedicalStore = useCallback((storeId: string) => {
-        updateAppData(ad => ({ ...ad, medicalStores: ad.medicalStores.filter(s => s.id !== storeId) }));
+        updateAppData(ad => ({ ...ad, medicalStores: (ad.medicalStores || []).filter(s => s.id !== storeId) }));
     }, [updateAppData]);
 
     const addMedicine = useCallback((medData: Omit<Medicine, 'id' | 'lastUpdated'>): string => {
@@ -190,8 +195,8 @@ const AppProvider: React.FC<{
         
         updateAppData(ad => ({
             ...ad, 
-            global_medicine_definitions: [...ad.global_medicine_definitions, newDef],
-            user_medicine_data: {...ad.user_medicine_data, [newId]: newUserData }
+            global_medicine_definitions: [...(ad.global_medicine_definitions || []), newDef],
+            user_medicine_data: {...(ad.user_medicine_data || {}), [newId]: newUserData }
         }));
         return newId;
     }, [updateAppData]);
@@ -199,7 +204,7 @@ const AppProvider: React.FC<{
     const updateMedicine = useCallback((med: Medicine) => {
         const { id, name, company, type, tags, ...userData } = med;
         const userUpdate: UserMedicineData = { ...userData, lastUpdated: new Date().toISOString() };
-        updateAppData(ad => ({ ...ad, user_medicine_data: { ...ad.user_medicine_data, [id]: { ...(ad.user_medicine_data[id] || {}), ...userUpdate } }}));
+        updateAppData(ad => ({ ...ad, user_medicine_data: { ...(ad.user_medicine_data || {}), [id]: { ...(ad.user_medicine_data?.[id] || {}), ...userUpdate } }}));
     }, [updateAppData]);
 
     const deleteMedicine = useCallback((medId: string) => {
@@ -210,11 +215,12 @@ const AppProvider: React.FC<{
         const finalBill: FinalizedBill = { ...billData, billNo: billNo, date: new Date().toISOString() };
         
         updateAppData(ad => {
+            const currentBills = ad.finalizedBills || [];
             const newFinalizedBills = isEditing 
-                ? ad.finalizedBills.map(b => b.billNo === billNo ? finalBill : b) 
-                : [...ad.finalizedBills, finalBill];
+                ? currentBills.map(b => b.billNo === billNo ? finalBill : b) 
+                : [...currentBills, finalBill];
 
-            const newUserMedicineData = { ...ad.user_medicine_data };
+            const newUserMedicineData = { ...(ad.user_medicine_data || {}) };
             finalBill.items.forEach(item => {
                 if (newUserMedicineData[item.id]) {
                     newUserMedicineData[item.id] = {
@@ -236,39 +242,40 @@ const AppProvider: React.FC<{
     }, [updateAppData]);
 
     const deleteFinalizedBill = useCallback((billNo: number) => {
-        updateAppData(ad => ({ ...ad, finalizedBills: ad.finalizedBills.filter(b => b.billNo !== billNo) }));
+        updateAppData(ad => ({ ...ad, finalizedBills: (ad.finalizedBills || []).filter(b => b.billNo !== billNo) }));
     }, [updateAppData]);
 
     const addSupplier = useCallback((supplier: Omit<Supplier, 'id'>) => {
-        updateAppData(ad => ({ ...ad, suppliers: [...ad.suppliers, { ...supplier, id: crypto.randomUUID() }] }));
+        updateAppData(ad => ({ ...ad, suppliers: [...(ad.suppliers || []), { ...supplier, id: crypto.randomUUID() }] }));
     }, [updateAppData]);
 
     const updateSupplier = useCallback((supplier: Supplier) => {
-        updateAppData(ad => ({ ...ad, suppliers: ad.suppliers.map(s => s.id === supplier.id ? supplier : s) }));
+        updateAppData(ad => ({ ...ad, suppliers: (ad.suppliers || []).map(s => s.id === supplier.id ? supplier : s) }));
     }, [updateAppData]);
 
     const deleteSupplier = useCallback((supplierId: string) => {
-        updateAppData(ad => ({ ...ad, suppliers: ad.suppliers.filter(s => s.id !== supplierId) }));
+        updateAppData(ad => ({ ...ad, suppliers: (ad.suppliers || []).filter(s => s.id !== supplierId) }));
     }, [updateAppData]);
     
     const postPurchase = useCallback((purchaseData: Omit<FinalizedPurchase, 'purchaseId' | 'date'>, editingId: number | null) => {
         updateAppData(ad => {
+            const currentPurchases = ad.finalizedPurchases || [];
             let finalizedPurchases;
             let purchaseId;
             if (editingId) {
                 const updatedPurchase: FinalizedPurchase = { ...purchaseData, purchaseId: editingId, date: new Date().toISOString() };
-                finalizedPurchases = ad.finalizedPurchases.map(p => p.purchaseId === editingId ? updatedPurchase : p);
+                finalizedPurchases = currentPurchases.map(p => p.purchaseId === editingId ? updatedPurchase : p);
                 purchaseId = editingId;
                 addNotification(`Purchase #${editingId} updated.`, 'success');
             } else {
-                const maxId = ad.finalizedPurchases.reduce((max, p) => Math.max(max, p.purchaseId), 0);
+                const maxId = currentPurchases.reduce((max, p) => Math.max(max, p.purchaseId), 0);
                 const newPurchase: FinalizedPurchase = { ...purchaseData, purchaseId: maxId + 1, date: new Date().toISOString() };
-                finalizedPurchases = [...ad.finalizedPurchases, newPurchase];
+                finalizedPurchases = [...currentPurchases, newPurchase];
                 purchaseId = newPurchase.purchaseId;
                 addNotification(`Purchase #${purchaseId} recorded.`, 'success');
             }
 
-            const newUserMedicineData = { ...ad.user_medicine_data };
+            const newUserMedicineData = { ...(ad.user_medicine_data || {}) };
             purchaseData.items.forEach(item => {
                 const currentMedData = newUserMedicineData[item.medicineId];
                 const newMedData: UserMedicineData = { 
@@ -286,12 +293,12 @@ const AppProvider: React.FC<{
     }, [updateAppData, addNotification]);
 
     const deleteFinalizedPurchase = useCallback((purchaseId: number) => {
-        updateAppData(ad => ({ ...ad, finalizedPurchases: ad.finalizedPurchases.filter(p => p.purchaseId !== purchaseId) }));
+        updateAppData(ad => ({ ...ad, finalizedPurchases: (ad.finalizedPurchases || []).filter(p => p.purchaseId !== purchaseId) }));
         addNotification(`Purchase #${purchaseId} deleted.`, 'info');
     }, [updateAppData, addNotification]);
 
     const updateBillLayoutSettings = useCallback((newSettings: Partial<BillLayoutSettings>) => {
-        updateAppData(ad => ({ ...ad, billLayoutSettings: { ...ad.billLayoutSettings, ...newSettings }}));
+        updateAppData(ad => ({ ...ad, billLayoutSettings: { ...(ad.billLayoutSettings || initialAppData.billLayoutSettings), ...newSettings }}));
     }, [updateAppData]);
 
     const resetBillingSession = useCallback(() => {
@@ -620,7 +627,8 @@ const Header: React.FC<{ isAnimatingIn: boolean; }> = ({ isAnimatingIn }) => {
     ],
   };
 
-  const navItems = activeSection !== 'welcome' ? sectionNavItems[activeSection] : [];
+  // SAFEGUARD: Ensure navItems is always an array to prevent "undefined.map" crash
+  const navItems = (activeSection !== 'welcome' && sectionNavItems[activeSection]) ? sectionNavItems[activeSection] : [];
 
   const handleNavClick = (view: AppView) => {
     setActiveView(view);
@@ -969,7 +977,9 @@ export default function App() {
             try {
                 const parsed = JSON.parse(cached);
                 if (parsed) {
-                    setAppData(parsed);
+                    // Safety check: Ensure cached data has essential keys
+                    const sanitized = { ...initialAppData, ...parsed };
+                    setAppData(sanitized);
                     loadedFromCache = true;
                 }
             } catch (e) {
@@ -978,20 +988,39 @@ export default function App() {
         }
 
         try {
-            const { data, error } = await supabase
+            const fetchPromise = supabase
                 .from('user_data')
                 .select('content')
                 .eq('id', userId)
                 .maybeSingle();
+            
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error("Timeout")), 5000)
+            );
+
+            const { data, error } = await Promise.race([fetchPromise, timeoutPromise]) as any;
 
             if (error) throw error;
 
-            if (data?.content) {
+            // FIX: Robust check for data content and merging with defaults
+            if (data?.content && Object.keys(data.content).length > 0) {
                 // Cloud data found
-                setAppData(data.content);
-                localStorage.setItem(localKey, JSON.stringify(data.content));
+                const cloudData = data.content;
+                
+                // Sanitize cloud data to remove nulls that might have been accidentally saved
+                const cleanCloudData = Object.fromEntries(
+                    Object.entries(cloudData).filter(([_, v]) => v !== null && v !== undefined)
+                );
+
+                // Merge with initialAppData to ensure structure integrity
+                // initialAppData comes first, then cleanCloudData overrides it.
+                // This ensures if cloud data is partial, we still have defaults.
+                const mergedData = { ...initialAppData, ...cleanCloudData };
+                
+                setAppData(mergedData);
+                localStorage.setItem(localKey, JSON.stringify(mergedData));
             } else {
-                // New user (no data in cloud)
+                // New user (no data in cloud, or empty object from trigger)
                 // If we didn't load from cache (or cache was empty), initialize new user data
                 if (!loadedFromCache) {
                     setAppData(initialAppData);
@@ -999,11 +1028,11 @@ export default function App() {
                 // If we did load from cache but cloud was empty, the auto-save effect will push cache to cloud.
             }
         } catch (e) {
-            console.error("Sync error:", e);
-            // If cloud fetch failed and we have no cache, we MUST set initial data to prevent locking the user out.
+            console.error("Data sync failed:", e);
+            // Crucial fix: If we still don't have data (no cache, fetch failed), init with defaults
             if (!loadedFromCache) {
-                setAppData(initialAppData);
-                addNotification("Could not sync with cloud. Using local mode.", "warning");
+                 setAppData(initialAppData);
+                 addNotification("Could not sync with cloud. Using local mode.", "warning");
             }
         } finally {
             setIsLoading(false);

@@ -10,9 +10,12 @@ interface AuthProps {
 const Auth: React.FC<AuthProps> = ({ addNotification, onLoginSuccess }) => {
     const [isSignUp, setIsSignUp] = useState(false);
 
-    // Login Form State
+    // Form State
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [firstName, setFirstName] = useState('');
+    const [lastName, setLastName] = useState('');
+    
     const [loading, setLoading] = useState(false);
     const [loginSuccess, setLoginSuccess] = useState(false);
 
@@ -37,10 +40,31 @@ const Auth: React.FC<AuthProps> = ({ addNotification, onLoginSuccess }) => {
 
     const handleSignUp = async (e: React.FormEvent) => {
         e.preventDefault();
+        
+        // --- PRE-FLIGHT VALIDATION ---
+        // We enforce this in UI to provide immediate feedback, 
+        // matching the DB constraints.
+        if (firstName.trim().length < 4 || firstName.trim().length > 30) {
+            addNotification("First Name must be between 4 and 30 characters.", "error");
+            return;
+        }
+
+        if (lastName.trim().length > 0 && (lastName.trim().length < 3 || lastName.trim().length > 30)) {
+            addNotification("Last Name must be between 3 and 30 characters.", "error");
+            return;
+        }
+
         setLoading(true);
+
         const { data, error } = await supabase.auth.signUp({
             email,
             password,
+            options: {
+                data: {
+                    first_name: firstName.trim(),
+                    last_name: lastName.trim() || null, 
+                }
+            }
         });
 
         if (error) {
@@ -48,12 +72,19 @@ const Auth: React.FC<AuthProps> = ({ addNotification, onLoginSuccess }) => {
             setLoading(false);
         } else if (data.user) {
             addNotification('Account created! Logging you in...', 'success');
-            // Auto login after sign up if session created
-             setLoginSuccess(true);
+            setLoginSuccess(true);
              setTimeout(() => {
                  onLoginSuccess(data.user?.email || 'User');
              }, 1000);
         }
+    };
+
+    const toggleMode = () => {
+        setIsSignUp(prev => !prev);
+        setEmail('');
+        setPassword('');
+        setFirstName('');
+        setLastName('');
     };
 
     return (
@@ -64,17 +95,14 @@ const Auth: React.FC<AuthProps> = ({ addNotification, onLoginSuccess }) => {
                     type="checkbox" 
                     className="toggle" 
                     checked={isSignUp} 
-                    onChange={() => {
-                        setIsSignUp(prev => !prev);
-                        setEmail('');
-                        setPassword('');
-                    }} 
+                    onChange={toggleMode} 
                 />
                 <label htmlFor="auth-toggle" className="switch">
                    <span className="slider"></span>
                    <span className="card-side"></span>
                 </label>
                <div className="flip-card__inner">
+                  {/* LOGIN SIDE */}
                   <div className="flip-card__front">
                      <div className="title">Log in</div>
                      <form className="flip-card__form" onSubmit={handleLogin}>
@@ -104,9 +132,30 @@ const Auth: React.FC<AuthProps> = ({ addNotification, onLoginSuccess }) => {
                         </button>
                      </form>
                   </div>
+
+                  {/* SIGN UP SIDE */}
                   <div className="flip-card__back">
                      <div className="title">Sign up</div>
                      <form className="flip-card__form" onSubmit={handleSignUp}>
+                        <div className="flex gap-2 w-[250px]">
+                            <input 
+                                className="flip-card__input w-1/2" 
+                                name="firstName"
+                                placeholder="First Name" 
+                                type="text"
+                                value={firstName}
+                                onChange={(e) => setFirstName(e.target.value)}
+                                required
+                            />
+                             <input 
+                                className="flip-card__input w-1/2" 
+                                name="lastName"
+                                placeholder="Last Name" 
+                                type="text"
+                                value={lastName}
+                                onChange={(e) => setLastName(e.target.value)}
+                            />
+                        </div>
                         <input 
                             className="flip-card__input" 
                             name="email"
@@ -126,7 +175,7 @@ const Auth: React.FC<AuthProps> = ({ addNotification, onLoginSuccess }) => {
                             required
                         />
                         <button type="submit" className="flip-card__btn" disabled={loading}>
-                            {loading ? 'Creating Account...' : 'Sign Up'}
+                            {loading ? 'Creating...' : 'Sign Up'}
                         </button>
                      </form>
                   </div>
