@@ -1,13 +1,4 @@
-
-
 import React from 'react';
-
-// --- USER AUTHENTICATION ---
-export interface User {
-  id: string;
-  username: string;
-  password: string; // This will be stored base64 encoded, not plaintext.
-}
 
 // --- LOCAL STORAGE DATA STRUCTURE (PER-USER) ---
 export interface AppData {

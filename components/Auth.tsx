@@ -1,81 +1,58 @@
-
-import React, { useState, useEffect } from 'react';
-import { NotificationType, User } from '../types';
+import React, { useState } from 'react';
+import { NotificationType } from '../types';
+import { supabase } from '../lib/supabase';
 
 interface AuthProps {
     addNotification: (message: string, type?: NotificationType) => void;
-    onLoginSuccess: (username: string) => void;
-    onSignUp: (user: Omit<User, 'id'>) => boolean;
-    users: User[];
+    onLoginSuccess: (email: string) => void;
 }
 
-const LAST_USER_KEY = 'mughal_os_last_user';
-
-const Auth: React.FC<AuthProps> = ({ addNotification, onLoginSuccess, onSignUp, users }) => {
+const Auth: React.FC<AuthProps> = ({ addNotification, onLoginSuccess }) => {
     const [isSignUp, setIsSignUp] = useState(false);
 
     // Login Form State
-    const [loginUsername, setLoginUsername] = useState('');
-    const [loginPassword, setLoginPassword] = useState('');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [loading, setLoading] = useState(false);
     const [loginSuccess, setLoginSuccess] = useState(false);
 
-    // Sign Up Form State
-    const [signUpUsername, setSignUpUsername] = useState('');
-    const [signUpPassword, setSignUpPassword] = useState('');
-    const [signUpConfirmPassword, setSignUpConfirmPassword] = useState('');
-
-    useEffect(() => {
-        const lastUser = localStorage.getItem(LAST_USER_KEY);
-        if(lastUser) {
-            setLoginUsername(lastUser);
-        }
-    }, []);
-
-    const handleLogin = (e: React.FormEvent) => {
+    const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!loginUsername.trim() || !loginPassword.trim()) {
-            addNotification('Please enter username and password.', 'warning');
-            return;
-        }
+        setLoading(true);
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+        });
 
-        const user = users.find(u => u.username.toLowerCase() === loginUsername.trim().toLowerCase());
-        
-        // Use btoa for basic password obfuscation, atob to decode
-        if (user && atob(user.password) === loginPassword) {
+        if (error) {
+            addNotification(error.message, 'error');
+            setLoading(false);
+        } else if (data.user) {
             setLoginSuccess(true);
             setTimeout(() => {
-                onLoginSuccess(user.username);
+                onLoginSuccess(data.user?.email || 'User');
             }, 1000);
-        } else {
-            addNotification('Invalid username or password.', 'error');
         }
     };
 
-    const handleSignUp = (e: React.FormEvent) => {
+    const handleSignUp = async (e: React.FormEvent) => {
         e.preventDefault();
-        const trimmedUsername = signUpUsername.trim();
-        if (!trimmedUsername || !signUpPassword.trim()) {
-            addNotification('Username and password cannot be empty.', 'warning');
-            return;
-        }
-        if (signUpPassword !== signUpConfirmPassword) {
-            addNotification('Passwords do not match.', 'error');
-            return;
-        }
-        
-        const success = onSignUp({
-            username: trimmedUsername,
-            password: btoa(signUpPassword) // Store encoded password
+        setLoading(true);
+        const { data, error } = await supabase.auth.signUp({
+            email,
+            password,
         });
 
-        if (success) {
-            addNotification('Account created successfully!', 'success');
-            setSignUpUsername('');
-            setSignUpPassword('');
-            setSignUpConfirmPassword('');
-            setIsSignUp(false); // Flip back to login form
-        } else {
-            addNotification(`Username "${trimmedUsername}" is already taken.`, 'error');
+        if (error) {
+            addNotification(error.message, 'error');
+            setLoading(false);
+        } else if (data.user) {
+            addNotification('Account created! Logging you in...', 'success');
+            // Auto login after sign up if session created
+             setLoginSuccess(true);
+             setTimeout(() => {
+                 onLoginSuccess(data.user?.email || 'User');
+             }, 1000);
         }
     };
 
@@ -87,7 +64,11 @@ const Auth: React.FC<AuthProps> = ({ addNotification, onLoginSuccess, onSignUp, 
                     type="checkbox" 
                     className="toggle" 
                     checked={isSignUp} 
-                    onChange={() => setIsSignUp(prev => !prev)} 
+                    onChange={() => {
+                        setIsSignUp(prev => !prev);
+                        setEmail('');
+                        setPassword('');
+                    }} 
                 />
                 <label htmlFor="auth-toggle" className="switch">
                    <span className="slider"></span>
@@ -99,11 +80,11 @@ const Auth: React.FC<AuthProps> = ({ addNotification, onLoginSuccess, onSignUp, 
                      <form className="flip-card__form" onSubmit={handleLogin}>
                         <input 
                             className="flip-card__input" 
-                            name="username" 
-                            placeholder="Username" 
-                            type="text" 
-                            value={loginUsername}
-                            onChange={(e) => setLoginUsername(e.target.value)}
+                            name="email" 
+                            placeholder="Email" 
+                            type="email" 
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
                             required
                         />
                         <input 
@@ -111,12 +92,12 @@ const Auth: React.FC<AuthProps> = ({ addNotification, onLoginSuccess, onSignUp, 
                             name="password" 
                             placeholder="Password" 
                             type="password" 
-                            value={loginPassword}
-                            onChange={(e) => setLoginPassword(e.target.value)}
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
                             required
                         />
-                        <button type="submit" className={`flip-card__btn ${loginSuccess ? 'success' : ''}`} disabled={loginSuccess}>
-                            <span className="btn-text">Login</span>
+                        <button type="submit" className={`flip-card__btn ${loginSuccess ? 'success' : ''}`} disabled={loading || loginSuccess}>
+                            <span className="btn-text">{loading ? '...' : 'Login'}</span>
                             <svg className="checkmark-svg" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="white">
                                 <path className="checkmark-path" strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                             </svg>
@@ -128,10 +109,11 @@ const Auth: React.FC<AuthProps> = ({ addNotification, onLoginSuccess, onSignUp, 
                      <form className="flip-card__form" onSubmit={handleSignUp}>
                         <input 
                             className="flip-card__input" 
-                            placeholder="Username" 
-                            type="text"
-                            value={signUpUsername}
-                            onChange={(e) => setSignUpUsername(e.target.value)}
+                            name="email"
+                            placeholder="Email" 
+                            type="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
                             required
                         />
                         <input 
@@ -139,20 +121,13 @@ const Auth: React.FC<AuthProps> = ({ addNotification, onLoginSuccess, onSignUp, 
                             name="password" 
                             placeholder="Password" 
                             type="password" 
-                            value={signUpPassword}
-                            onChange={(e) => setSignUpPassword(e.target.value)}
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
                             required
                         />
-                         <input 
-                            className="flip-card__input" 
-                            name="confirm_password" 
-                            placeholder="Confirm Password" 
-                            type="password" 
-                            value={signUpConfirmPassword}
-                            onChange={(e) => setSignUpConfirmPassword(e.target.value)}
-                            required
-                        />
-                        <button type="submit" className="flip-card__btn">Sign Up</button>
+                        <button type="submit" className="flip-card__btn" disabled={loading}>
+                            {loading ? 'Creating Account...' : 'Sign Up'}
+                        </button>
                      </form>
                   </div>
                </div>

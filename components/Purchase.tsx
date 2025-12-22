@@ -372,7 +372,7 @@ export default function Purchase() {
     const handlePostPurchase = useCallback(async () => {
         if (!activeSupplier) { addNotification("No supplier selected.", "error"); return; }
 
-        const itemsForPurchase: FinalizedPurchaseItem[] = Object.entries(purchaseCart)
+        const itemsForPurchase: FinalizedPurchaseItem[] = (Object.entries(purchaseCart) as [string, PurchaseRowData][])
             .map(([medId, data]) => ({ medId, data }))
             .filter(({ data }) => data.quantity > 0 && data.rate > 0)
             .map(({medId, data}) => {

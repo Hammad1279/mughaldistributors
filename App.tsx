@@ -1,8 +1,8 @@
-
-
 import React, { useState, useEffect, useCallback, createContext, useContext, ReactNode, useMemo, useRef, useLayoutEffect } from 'react';
-import { AppView, Medicine, MedicalStore, FinalizedBill, CartItem, NotificationState, NotificationType, Supplier, FinalizedPurchase, AppSection, PurchaseRowData, BillLayoutSettings, SalesSettings, MedicineDefinition, UserMedicineData, AppContextType, AppData, User } from './types';
+import { AppView, Medicine, MedicalStore, FinalizedBill, CartItem, NotificationState, NotificationType, Supplier, FinalizedPurchase, AppSection, PurchaseRowData, BillLayoutSettings, SalesSettings, MedicineDefinition, UserMedicineData, AppContextType, AppData } from './types';
 import { INITIAL_MEDICINES_DATA } from './constants';
+import { supabase } from './lib/supabase';
+import { initialAppData } from './data/initial-data';
 
 import ManageStores from './components/ManageStores';
 import Inventory from './components/Inventory';
@@ -30,6 +30,20 @@ export const useAppContext = () => {
     if (!context) throw new Error("useAppContext must be used within an AppProvider");
     return context;
 };
+
+// --- HOOK: Debounce Value ---
+function useDebounce<T>(value: T, delay: number): T {
+    const [debouncedValue, setDebouncedValue] = useState<T>(value);
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            setDebouncedValue(value);
+        }, delay);
+        return () => {
+            clearTimeout(handler);
+        };
+    }, [value, delay]);
+    return debouncedValue;
+}
 
 // --- APP PROVIDER ---
 const AppProvider: React.FC<{ 
@@ -882,135 +896,21 @@ const SectionTransition: React.FC<{
     );
 };
 
-const USERS_LIST_KEY = 'mughal_os_users_list';
-const LAST_USER_KEY = 'mughal_os_last_user';
-const getUserDataKey = (username: string) => `mughal_os_data_${username.toLowerCase()}`;
-
-const getInitialAppData = (): AppData => {
-    const initialGlobalDefs: MedicineDefinition[] = INITIAL_MEDICINES_DATA.map(med => ({
-        id: crypto.randomUUID(),
-        name: med.name,
-        company: med.company,
-        type: med.type,
-        tags: med.name.toLowerCase().split(/\s+/).filter(Boolean),
-    }));
-
-    const initialUserMedicineData: Record<string, UserMedicineData> = {};
-    initialGlobalDefs.forEach((def, index) => {
-        const initialMed = INITIAL_MEDICINES_DATA[index];
-        initialUserMedicineData[def.id] = {
-            price: null,
-            discount: initialMed.discount,
-            saleDiscount: initialMed.saleDiscount,
-            batchNo: '',
-            lastUpdated: new Date(0).toISOString(),
-        };
-    });
-
-    return {
-        version: '1.0.0',
-        global_medicine_definitions: initialGlobalDefs,
-        user_medicine_data: initialUserMedicineData,
-        medicalStores: [],
-        finalizedBills: [],
-        suppliers: [],
-        finalizedPurchases: [],
-        billLayoutSettings: {
-            distributorName: 'Mughal Distributors',
-            distributorTitle: 'ESTIMATE',
-            distributorAddressLine1: 'Bismillah Plaza, Opp. Sonari Bank',
-            distributorAddressLine2: 'Chinioat Bazar, Faisalabad',
-            footerText: '',
-            showPhoneNumber: true,
-            showBillDate: true,
-            phoneNumber: '03040297400'
-        },
-        salesSettings: { showSalesTaxColumn: false, showBatchNo: false },
-        cart: [],
-        purchaseCart: {},
-        purchaseCartOrder: [],
-        currentBillingStoreID: null,
-        currentPurchaseSupplierID: null,
-        currentViewingSupplierId: null,
-        editingBillNo: null,
-        editingPurchaseId: null,
-        billFilterStoreID: null,
-    };
-};
-
-
 export default function App() {
     const [appData, setAppData] = useState<AppData | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [notifications, setNotifications] = useState<NotificationState[]>([]);
     
-    const [users, setUsers] = useState<User[]>([]);
-    const [currentUser, setCurrentUser] = useState<string | null>(null);
+    const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
     const [authExiting, setAuthExiting] = useState(false);
     const [postLoginLoading, setPostLoginLoading] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
 
     const [importFileContent, setImportFileContent] = useState<string | null>(null);
     const [isGlobalDragging, setIsGlobalDragging] = useState(false);
-    
-    // Load users list on initial render
-    useEffect(() => {
-        try {
-            const savedUsers = localStorage.getItem(USERS_LIST_KEY);
-            if (savedUsers) {
-                setUsers(JSON.parse(savedUsers));
-            }
-        } catch (error) {
-            console.error("Failed to load users list from local storage:", error);
-        } finally {
-            setIsLoading(false);
-        }
-    }, []);
 
-    // Load user-specific data when currentUser changes
-    useEffect(() => {
-        if (currentUser) {
-            setIsLoading(true);
-            try {
-                const userKey = getUserDataKey(currentUser);
-                const savedData = localStorage.getItem(userKey);
-                if (savedData) {
-                    setAppData(JSON.parse(savedData));
-                } else {
-                    // This case handles a newly signed-up user
-                    setAppData(getInitialAppData());
-                }
-            } catch (error) {
-                console.error(`Failed to load data for user ${currentUser}:`, error);
-                setAppData(getInitialAppData()); // Load fresh data on error
-            } finally {
-                setIsLoading(false);
-            }
-        } else {
-            setAppData(null); // Clear data on logout
-        }
-    }, [currentUser]);
-
-    // Auto-save user-specific data to localStorage
-    useEffect(() => {
-        if (appData && !isLoading && currentUser) {
-            try {
-                localStorage.setItem(getUserDataKey(currentUser), JSON.stringify(appData));
-            } catch (error) {
-                console.error("Failed to save user data to local storage:", error);
-            }
-        }
-    }, [appData, isLoading, currentUser]);
-
-    // Auto-save users list to localStorage
-    useEffect(() => {
-        if (!isLoading) {
-            try {
-                localStorage.setItem(USERS_LIST_KEY, JSON.stringify(users));
-            } catch (error) {
-                console.error("Failed to save users list to local storage:", error);
-            }
-        }
-    }, [users, isLoading]);
+    // Debounced AppData for Auto-Saving to Supabase
+    const debouncedAppData = useDebounce(appData, 2000); // 2 second delay
 
     const startExitAnimation = useCallback((id: number) => {
         setNotifications(current =>
@@ -1030,32 +930,131 @@ export default function App() {
         }, 5000);
     }, [startExitAnimation]);
 
+    // --- Data Persistence Logic ---
+    
+    // 1. Initial Load: Check Supabase session
+    useEffect(() => {
+        const checkSession = async () => {
+            const { data } = await supabase.auth.getSession();
+            if (data.session) {
+                setCurrentUserEmail(data.session.user.email || 'User');
+                loadData(data.session.user.id);
+            } else {
+                setIsLoading(false);
+            }
+        };
+        checkSession();
+
+        const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+            if (event === 'SIGNED_OUT') {
+                setCurrentUserEmail(null);
+                setAppData(null);
+            }
+        });
+
+        return () => {
+            authListener.subscription.unsubscribe();
+        };
+    }, []);
+
+    // 2. Load Data Function
+    const loadData = async (userId: string) => {
+        setIsLoading(true);
+        // Attempt to load from cache immediately for speed
+        const localKey = `mughal_os_cache_${userId}`;
+        const cached = localStorage.getItem(localKey);
+        let loadedFromCache = false;
+        
+        if (cached) {
+            try {
+                const parsed = JSON.parse(cached);
+                if (parsed) {
+                    setAppData(parsed);
+                    loadedFromCache = true;
+                }
+            } catch (e) {
+                console.error("Cache parse error", e);
+            }
+        }
+
+        try {
+            const { data, error } = await supabase
+                .from('user_data')
+                .select('content')
+                .eq('id', userId)
+                .maybeSingle();
+
+            if (error) throw error;
+
+            if (data?.content) {
+                // Cloud data found
+                setAppData(data.content);
+                localStorage.setItem(localKey, JSON.stringify(data.content));
+            } else {
+                // New user (no data in cloud)
+                // If we didn't load from cache (or cache was empty), initialize new user data
+                if (!loadedFromCache) {
+                    setAppData(initialAppData);
+                }
+                // If we did load from cache but cloud was empty, the auto-save effect will push cache to cloud.
+            }
+        } catch (e) {
+            console.error("Sync error:", e);
+            // If cloud fetch failed and we have no cache, we MUST set initial data to prevent locking the user out.
+            if (!loadedFromCache) {
+                setAppData(initialAppData);
+                addNotification("Could not sync with cloud. Using local mode.", "warning");
+            }
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // 3. Auto-Save Logic
+    useEffect(() => {
+        const saveData = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session || !debouncedAppData) return;
+
+            // Save to local storage immediately as backup
+            const userId = session.user.id;
+            localStorage.setItem(`mughal_os_cache_${userId}`, JSON.stringify(debouncedAppData));
+
+            setIsSyncing(true);
+            const { error } = await supabase
+                .from('user_data')
+                .upsert({
+                    id: userId,
+                    content: debouncedAppData,
+                    updated_at: new Date().toISOString()
+                });
+            
+            setIsSyncing(false);
+            if (error) {
+                console.error("Sync error", error);
+                // Silent fail for UX, or show small indicator
+            }
+        };
+
+        if (debouncedAppData) {
+            saveData();
+        }
+    }, [debouncedAppData]);
+
+
     const downloadBackup = useCallback(() => {
-        if (!appData || !currentUser) {
+        if (!appData || !currentUserEmail) {
             addNotification("No data to create a backup from.", "warning");
             return;
         }
         addNotification("Preparing your backup file...", "info");
         try {
-            // Create a clean version for export, removing transient state
-            const cleanData: AppData = {
-                ...appData,
-                cart: [],
-                purchaseCart: {},
-                purchaseCartOrder: [],
-                currentBillingStoreID: null,
-                currentPurchaseSupplierID: null,
-                currentViewingSupplierId: null,
-                editingBillNo: null,
-                editingPurchaseId: null,
-                billFilterStoreID: null
-            };
-            
+            const cleanData: AppData = { ...appData, cart: [], purchaseCart: {}, purchaseCartOrder: [], currentBillingStoreID: null, currentPurchaseSupplierID: null, currentViewingSupplierId: null, editingBillNo: null, editingPurchaseId: null, billFilterStoreID: null };
             const blob = new Blob([JSON.stringify(cleanData, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `mughal_os_backup_${currentUser}_${new Date().toISOString().slice(0, 10)}.json`;
+            a.download = `mughal_os_backup_${new Date().toISOString().slice(0, 10)}.json`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -1065,59 +1064,27 @@ export default function App() {
             console.error("Backup failed:", error);
             addNotification("Failed to create backup file.", "error");
         }
-    }, [appData, addNotification, currentUser]);
+    }, [appData, addNotification, currentUserEmail]);
     
     const importData = useCallback((jsonData: string) => {
-        if (!currentUser) {
+        if (!currentUserEmail) {
             addNotification("No user is logged in to import data for.", "error");
             return;
         }
         try {
             let importedData = JSON.parse(jsonData);
-            const defaults = getInitialAppData();
-
-            // --- Migration/Compatibility Layer for older backup formats ---
-            if (importedData.medicineDefinitions && !importedData.global_medicine_definitions) {
-                importedData.global_medicine_definitions = importedData.medicineDefinitions;
-                delete importedData.medicineDefinitions;
-            }
-            if (importedData.userMedicineData && !importedData.user_medicine_data) {
-                importedData.user_medicine_data = importedData.userMedicineData;
-                delete importedData.userMedicineData;
-            }
-
-            // Ensure all top-level keys exist and merge nested settings objects
-            const finalData = {
-                ...defaults,
-                ...importedData,
-                billLayoutSettings: {
-                    ...defaults.billLayoutSettings,
-                    ...(importedData.billLayoutSettings || {})
-                },
-                salesSettings: {
-                    ...defaults.salesSettings,
-                    ...(importedData.salesSettings || {})
-                }
-            };
-
-            // --- Final Validation ---
-            if (
-                !Array.isArray(finalData.global_medicine_definitions) ||
-                !Array.isArray(finalData.medicalStores) ||
-                !Array.isArray(finalData.finalizedBills) ||
-                !Array.isArray(finalData.suppliers)
-            ) {
-                throw new Error("Invalid file format after migration attempt.");
-            }
-
-            localStorage.setItem(getUserDataKey(currentUser), JSON.stringify(finalData));
-            addNotification("Data imported successfully! The application will now reload.", "success");
+            // Basic structural check
+            if (!importedData.global_medicine_definitions) throw new Error("Invalid format");
+            
+            // Update state, which triggers auto-save
+            setAppData(importedData);
+            addNotification("Data imported successfully! Syncing to cloud...", "success");
             setTimeout(() => window.location.reload(), 1500);
         } catch (error) {
             console.error("Import failed:", error);
-            addNotification("Failed to import data. The file may be corrupted or in the wrong format.", "error");
+            addNotification("Failed to import data. The file may be corrupted.", "error");
         }
-    }, [currentUser, addNotification]);
+    }, [currentUserEmail, addNotification]);
     
     const initiateImport = useCallback((file: File | null | undefined) => {
         if (file && (file.type === 'application/json' || file.name.endsWith('.json'))) {
@@ -1126,16 +1093,12 @@ export default function App() {
             reader.onload = (event) => {
                 try {
                     const content = event.target?.result as string;
-                    // Pre-validate JSON before showing confirmation modal
                     JSON.parse(content); 
                     setImportFileContent(content);
                 } catch (e) {
                     addNotification("Import failed: Invalid or corrupted JSON file.", "error");
                     setImportFileContent(null);
                 }
-            };
-            reader.onerror = () => {
-                addNotification("Failed to read the selected file.", "error");
             };
             reader.readAsText(file);
         } else if (file) {
@@ -1193,58 +1156,75 @@ export default function App() {
         setImportFileContent(null);
     };
 
-    const clearAllData = useCallback(() => {
-        if (!currentUser) return;
-        
-        localStorage.removeItem(getUserDataKey(currentUser));
-        addNotification(`Data for user "${currentUser}" cleared. Reloading application.`, "success");
-        setTimeout(() => window.location.reload(), 1500);
+    const clearAllData = useCallback(async () => {
+        if (!currentUserEmail) return;
+        setAppData(initialAppData); // Reset to default state
+        addNotification(`All data cleared. Syncing empty state...`, "success");
+    }, [currentUserEmail, addNotification]);
 
-    }, [currentUser]);
-
-    const handleLoginSuccess = (username: string) => {
+    const handleLoginSuccess = async (email: string) => {
         setAuthExiting(true);
-        localStorage.setItem(LAST_USER_KEY, username);
-        // After auth screen animates out (600ms)...
-        setTimeout(() => {
-            // Show the loader immediately
-            setPostLoginLoading(true);
-            // Set the current user to trigger background data loading
-            setCurrentUser(username);
-
-            // After 5 seconds, hide the loader to reveal the app
-            setTimeout(() => {
-                setPostLoginLoading(false);
-            }, 5000); // 5-second delay as requested
-        }, 600);
+        setPostLoginLoading(true);
+        setCurrentUserEmail(email);
+        
+        const { data } = await supabase.auth.getSession();
+        if (data.session) {
+             await loadData(data.session.user.id);
+        }
+        setPostLoginLoading(false);
     };
     
-    const handleLogout = () => {
-        setCurrentUser(null);
+    const handleLogout = async () => {
+        await supabase.auth.signOut();
         setAuthExiting(false);
+        setCurrentUserEmail(null);
+        setAppData(null);
     };
 
-    const handleSignUp = (newUser: Omit<User, 'id'>): boolean => {
-        const usernameExists = users.some(u => u.username.toLowerCase() === newUser.username.toLowerCase());
-        if (usernameExists) {
-            return false;
-        }
-        const userWithId: User = { ...newUser, id: crypto.randomUUID() };
-        setUsers(prev => [...prev, userWithId]);
-        // The useEffect for data loading will handle creating initial data
-        return true;
-    };
-
-    const isLoggedIn = !!currentUser;
+    const isLoggedIn = !!currentUserEmail;
 
     return (
         <>
             {postLoginLoading && <LoginLoader />}
 
-            {/* The main application is always rendered in the background to preload components, but remains invisible until login. */}
             <div style={{ visibility: isLoggedIn && !postLoginLoading ? 'visible' : 'hidden' }}>
-                { (isLoading || !appData) && isLoggedIn ? (
-                    <div className="fixed inset-0 flex items-center justify-center bg-slate-900"><p>Loading App Data...</p></div>
+                { /* Condition Fixed: Only show spinner if we have NO data. If we have data (cache), show app. */ }
+                { (!appData && isLoggedIn) ? (
+                    <div className="fixed inset-0 flex items-center justify-center bg-slate-900 text-slate-300">
+                        <div className="text-center flex flex-col items-center p-6 bg-slate-800 rounded-xl shadow-2xl border border-slate-700 max-w-sm mx-4">
+                            <div className="spinner mb-6 mx-auto"></div>
+                            <h3 className="text-xl font-bold text-white mb-2">Syncing Data...</h3>
+                            <p className="text-slate-400 mb-6 text-sm">
+                                Connecting to your cloud database. This usually takes a moment.
+                            </p>
+                            <div className="flex flex-col w-full gap-3">
+                                <Button 
+                                    onClick={() => window.location.reload()}
+                                    variant="secondary"
+                                    className="w-full"
+                                >
+                                    Reload Page
+                                </Button>
+                                <Button 
+                                    onClick={() => {
+                                        setAppData(initialAppData);
+                                        addNotification("Initialized with default data.", "info");
+                                    }}
+                                    variant="primary"
+                                    className="w-full"
+                                >
+                                    Start Fresh (New User)
+                                </Button>
+                                <Button 
+                                    onClick={handleLogout}
+                                    variant="danger"
+                                    className="w-full"
+                                >
+                                    Logout
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
                 ) : appData ? (
                     <AppContext.Provider value={{ downloadBackup, importData, initiateImport, clearAllData, logout: handleLogout } as any}>
                          <AppProvider
@@ -1255,18 +1235,21 @@ export default function App() {
                         >
                             <GlobalKeyboardShortcuts />
                         </AppProvider>
+                        {(isSyncing || isLoading) && (
+                            <div className="fixed bottom-4 left-4 bg-slate-800 text-xs text-slate-400 px-2 py-1 rounded opacity-75 z-[200] flex items-center gap-2">
+                                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+                                Syncing...
+                            </div>
+                        )}
                     </AppContext.Provider>
                 ) : null }
             </div>
 
-            {/* The authentication screen is only rendered when not logged in. */}
             {!isLoggedIn && (
                 <div className={`auth-container ${authExiting ? 'animate-auth-exit' : ''}`}>
                     <Auth 
                         addNotification={addNotification} 
                         onLoginSuccess={handleLoginSuccess}
-                        onSignUp={handleSignUp}
-                        users={users}
                     />
                 </div>
             )}
@@ -1287,16 +1270,13 @@ export default function App() {
                     <Icon name="warning" className="text-5xl text-amber-400 mx-auto mb-4" />
                     <h3 className="text-xl font-bold text-slate-100">Overwrite Existing Data?</h3>
                     <p className="text-slate-300 mt-2">
-                        Importing this file will completely replace all of your current data, including bills, stores, suppliers, and inventory settings. 
+                        Importing this file will completely replace all of your cloud data.
                         This action cannot be undone.
-                    </p>
-                    <p className="text-slate-300 mt-4">
-                        Are you sure you want to proceed?
                     </p>
                 </div>
                 <div className="flex justify-center gap-4 mt-8">
                     <Button variant="secondary" onClick={() => setImportFileContent(null)} className="w-32">Cancel</Button>
-                    <Button variant="danger" onClick={handleConfirmImport} className="w-48" autoFocus>Yes, Import and Overwrite</Button>
+                    <Button variant="danger" onClick={handleConfirmImport} className="w-48" autoFocus>Yes, Overwrite</Button>
                 </div>
             </Modal>
             
